@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  neoncore:
+    build: ./neoncore
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - NEONMESH_URL=http://neonmesh:8001
+      - NEONMEM_URL=http://neonmem:8002
+    depends_on:
+      redis:
+        condition: service_healthy
+      neonmesh:
+        condition: service_started
+      neonmem:
+        condition: service_started
+    restart: unless-stopped
+
+  neonmesh:
+    build: ./neonmesh
+    environment:
+      - NEONMEM_URL=http://neonmem:8002
+      - OBSCURA_URL=http://obscura:8004
+      - NEBIUS_BASE_URL=${NEBIUS_BASE_URL:-https://api.studio.nebius.ai/v1/}
+      - NEBIUS_API_KEY=${NEBIUS_API_KEY:-}
+      - NEBIUS_MODEL=${NEBIUS_MODEL:-nvidia/Llama-3.1-Nemotron-70B-Instruct}
+    ports:
+      - "127.0.0.1:8001:8001"
+    depends_on:
+      - obscura
+      - neonmem
+    restart: unless-stopped
+
+  obscura:
+    build: ./obscura
+    ports:
+      - "127.0.0.1:8004:8004"
+    restart: unless-stopped
+
+  neonmem:
+    build: ./neonmem
+    environment:
+      - NEONVAULT_URL=http://neonvault:8003
+    ports:
+      - "127.0.0.1:8002:8002"
+    depends_on:
+      - neonvault
+    restart: unless-stopped
+
+  neonshell:
+    build: ./neonshell
+    volumes:
+      - shared-data:/shared
+    restart: unless-stopped
+
+  neonpulse:
+    build: ./neonpulse
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - ALLOWED_TELEGRAM_USER_IDS=${ALLOWED_TELEGRAM_USER_IDS:-}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - NEONCORE_URL=http://neoncore:3000
+      - NEONMEM_URL=http://neonmem:8002
+    depends_on:
+      - redis
+      - neoncore
+    volumes:
+      - shared-data:/shared
+    restart: unless-stopped
+
+  neonvault:
+    build: ./neonvault
+    ports:
+      - "127.0.0.1:8003:8003"
+    volumes:
+      - vault-data:/data
+    restart: unless-stopped
+
+volumes:
+  shared-data:
+  vault-data:

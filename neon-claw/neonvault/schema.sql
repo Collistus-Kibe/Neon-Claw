@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS memories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    tags TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
