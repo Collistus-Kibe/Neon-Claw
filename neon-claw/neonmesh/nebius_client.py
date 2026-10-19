@@ -3,19 +3,41 @@ import json
 import httpx
 from typing import List, Dict, Any, Optional
 
-NEBIUS_BASE_URL = os.getenv("NEBIUS_BASE_URL", "https://api.studio.nebius.ai/v1/")
+# Supports both NVIDIA Developer API (build.nvidia.com) and Nebius Cloud API
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
-DEFAULT_MODEL = os.getenv("NEBIUS_MODEL", "nvidia/Llama-3.1-Nemotron-70B-Instruct")
+
+# Determine active API key
+ACTIVE_API_KEY = NVIDIA_API_KEY or NEBIUS_API_KEY
+
+# Determine default Base URL
+if ACTIVE_API_KEY.startswith("nvapi-") or NVIDIA_API_KEY:
+    DEFAULT_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+    DEFAULT_MODEL = os.getenv("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
+    DEFAULT_PROVIDER = "nvidia_developer_api"
+else:
+    DEFAULT_BASE_URL = os.getenv("NEBIUS_BASE_URL", "https://api.studio.nebius.ai/v1")
+    DEFAULT_MODEL = os.getenv("NEBIUS_MODEL", "nvidia/Llama-3.1-Nemotron-70B-Instruct")
+    DEFAULT_PROVIDER = "nebius_serverless"
 
 class NebiusNemotronClient:
     """
-    Client for Nebius Serverless Token Factory powering NVIDIA Nemotron
-    with deterministic fallback when no API key is provided.
+    Client for NVIDIA Developer API (build.nvidia.com) & Nebius Serverless
+    powering NVIDIA Nemotron with deterministic offline fallback when no API key is provided.
     """
-    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
-        self.api_key = api_key or NEBIUS_API_KEY
-        self.base_url = (base_url or NEBIUS_BASE_URL).rstrip("/")
-        self.model = DEFAULT_MODEL
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: Optional[str] = None):
+        self.api_key = api_key or ACTIVE_API_KEY
+        
+        # Auto-detect endpoint based on key format
+        if self.api_key.startswith("nvapi-"):
+            self.base_url = (base_url or os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")).rstrip("/")
+            self.model = model or os.getenv("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
+            self.provider = "nvidia_developer_api"
+        else:
+            self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
+            self.model = model or DEFAULT_MODEL
+            self.provider = DEFAULT_PROVIDER
+            
         self.timeout = httpx.Timeout(45.0, connect=10.0)
 
     async def chat_completion(
@@ -25,11 +47,12 @@ class NebiusNemotronClient:
         temperature: float = 0.6,
         max_tokens: int = 2048
     ) -> Dict[str, Any]:
-        # If API key is present, execute via Nebius Serverless API
-        if self.api_key and self.api_key != "your_nebius_api_key_here":
+        # If active API key is present, execute via cloud API
+        if self.api_key and self.api_key not in ["your_nvidia_api_key_here", "your_nebius_api_key_here"]:
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Accept": "application/json"
             }
             payload: Dict[str, Any] = {
                 "model": self.model,
@@ -52,12 +75,12 @@ class NebiusNemotronClient:
                             "content": choice["message"].get("content") or "",
                             "tool_calls": choice["message"].get("tool_calls", []),
                             "model": data.get("model", self.model),
-                            "provider": "nebius_serverless"
+                            "provider": self.provider
                         }
                     else:
-                        print(f"[Nebius Client] API error {resp.status_code}: {resp.text}")
+                        print(f"[{self.provider}] API error {resp.status_code}: {resp.text}")
             except Exception as e:
-                print(f"[Nebius Client] Request failed: {e}")
+                print(f"[{self.provider}] Request failed: {e}")
 
         # Deterministic Offline Fallback Reasoner (Ensures zero downtime)
         return self._offline_fallback_reasoner(messages, tools)
@@ -75,7 +98,6 @@ class NebiusNemotronClient:
 
         # Check if prompt requests browsing/screenshots
         if any(w in last_user_msg for w in ["browse", "http", "www", "screenshot", "visit", "website"]):
-            # Trigger Obscura tool call
             target_url = "https://news.ycombinator.com"
             words = last_user_msg.split()
             for word in words:
@@ -104,7 +126,7 @@ class NebiusNemotronClient:
                 "success": True,
                 "content": (
                     "🟢 **NemoClaw System Status**:\n"
-                    "- **Brain Model**: NVIDIA Nemotron (Ready on Nebius Serverless)\n"
+                    "- **Brain Model**: NVIDIA Nemotron (NVIDIA Developer API / NIM)\n"
                     "- **Agent Core**: Hermes Agent Cognitive Loop Active\n"
                     "- **Sandboxing**: NVIDIA OpenShell Active\n"
                     "- **Browser**: Obscura Headless Engine Online\n"

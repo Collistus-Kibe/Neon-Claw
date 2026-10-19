@@ -95,7 +95,12 @@ def write_env_file(env_vars):
         "# 2. Telegram Whitelist User IDs (from @userinfobot - comma separated)",
         f"ALLOWED_TELEGRAM_USER_IDS={env_vars.get('ALLOWED_TELEGRAM_USER_IDS', '')}",
         "",
-        "# 3. Nebius Serverless / Token Factory API (for NVIDIA Nemotron 70B)",
+        "# 3. NVIDIA Developer API Key (from https://build.nvidia.com/ - format: nvapi-...)",
+        f"NVIDIA_API_KEY={env_vars.get('NVIDIA_API_KEY', '')}",
+        f"NVIDIA_BASE_URL={env_vars.get('NVIDIA_BASE_URL', 'https://integrate.api.nvidia.com/v1')}",
+        f"NVIDIA_MODEL={env_vars.get('NVIDIA_MODEL', 'nvidia/llama-3.1-nemotron-70b-instruct')}",
+        "",
+        "# Optional fallback: Nebius Serverless API",
         f"NEBIUS_API_KEY={env_vars.get('NEBIUS_API_KEY', '')}",
         f"NEBIUS_BASE_URL={env_vars.get('NEBIUS_BASE_URL', 'https://api.studio.nebius.ai/v1/')}",
         f"NEBIUS_MODEL={env_vars.get('NEBIUS_MODEL', 'nvidia/Llama-3.1-Nemotron-70B-Instruct')}",
@@ -135,15 +140,20 @@ def cmd_setup():
         current["ALLOWED_TELEGRAM_USER_IDS"] = id_in
 
     print()
-    # Step 3: Nebius API Key
-    print(f"{BOLD}[3/4] ⚡ Nebius Cloud API Key - NVIDIA Nemotron 70B (Optional){RESET}")
-    print(f"  {YELLOW}Tip:{RESET} Get your key from {CYAN}https://studio.nebius.ai/{RESET} (Token Factory / Serverless).")
-    print(f"  {DIM}Leave empty to run using the built-in deterministic offline reasoner.{RESET}")
-    curr_key = current.get("NEBIUS_API_KEY", "")
-    default_prompt = f" [{curr_key[:6]}...{curr_key[-4:]}]" if curr_key and curr_key != "your_nebius_api_key_here" else " [Skip / Offline Mode]"
-    key_in = input(f"  Enter Nebius API Key{default_prompt}: ").strip()
+    # Step 3: NVIDIA Developer API Key (build.nvidia.com)
+    print(f"{BOLD}[3/4] ⚡ NVIDIA Developer API Key - Nemotron 70B (Recommended){RESET}")
+    print(f"  {YELLOW}Tip:{RESET} Get your free key from {CYAN}https://build.nvidia.com/{RESET} (NVIDIA API Catalog).")
+    print(f"  {DIM}Format: nvapi-... (Free credits included). Or press Enter to use offline reasoner.{RESET}")
+    curr_nv = current.get("NVIDIA_API_KEY") or current.get("NEBIUS_API_KEY", "")
+    default_prompt = f" [{curr_nv[:6]}...{curr_nv[-4:]}]" if curr_nv and curr_nv not in ["your_nvidia_api_key_here", "your_nebius_api_key_here"] else " [Skip / Offline Mode]"
+    key_in = input(f"  Enter NVIDIA API Key (nvapi-...){default_prompt}: ").strip()
     if key_in:
-        current["NEBIUS_API_KEY"] = key_in
+        if key_in.startswith("nvapi-"):
+            current["NVIDIA_API_KEY"] = key_in
+            current["NVIDIA_BASE_URL"] = "https://integrate.api.nvidia.com/v1"
+            current["NVIDIA_MODEL"] = "nvidia/llama-3.1-nemotron-70b-instruct"
+        else:
+            current["NEBIUS_API_KEY"] = key_in
 
     print()
     # Step 4: Tailscale Auth Key
@@ -163,11 +173,17 @@ def cmd_setup():
     print(f"{BRIGHT_GREEN}  │                                                             │{RESET}")
     tg_status = "Configured" if current.get("TELEGRAM_BOT_TOKEN") and current.get("TELEGRAM_BOT_TOKEN") != "your_telegram_bot_token_here" else "Missing"
     wl_status = current.get("ALLOWED_TELEGRAM_USER_IDS") or "Open Dev Mode"
-    neb_status = "NVIDIA Nemotron 70B (Live)" if current.get("NEBIUS_API_KEY") and current.get("NEBIUS_API_KEY") != "your_nebius_api_key_here" else "Offline Fallback"
+    
+    if current.get("NVIDIA_API_KEY") and current.get("NVIDIA_API_KEY").startswith("nvapi-"):
+        brain_status = "NVIDIA NIM Developer API (Live)"
+    elif current.get("NEBIUS_API_KEY") and current.get("NEBIUS_API_KEY") != "your_nebius_api_key_here":
+        brain_status = "Nebius Serverless (Live)"
+    else:
+        brain_status = "Offline Fallback Reasoner"
 
     print(f"{BRIGHT_GREEN}  │{RESET}  • {GRAY}Telegram Bot:{RESET}       {BOLD}{tg_status:<38}{RESET}{BRIGHT_GREEN}│{RESET}")
     print(f"{BRIGHT_GREEN}  │{RESET}  • {GRAY}Security Lock:{RESET}      {BOLD}{wl_status:<38}{RESET}{BRIGHT_GREEN}│{RESET}")
-    print(f"{BRIGHT_GREEN}  │{RESET}  • {GRAY}Brain Model:{RESET}        {BOLD}{neb_status:<38}{RESET}{BRIGHT_GREEN}│{RESET}")
+    print(f"{BRIGHT_GREEN}  │{RESET}  • {GRAY}Brain Engine:{RESET}       {BOLD}{brain_status:<38}{RESET}{BRIGHT_GREEN}│{RESET}")
     print(f"{BRIGHT_GREEN}  │                                                             │{RESET}")
     print(f"{BRIGHT_GREEN}  │  🚀 Next step: Run {BOLD}nemoclaw up{RESET}{BRIGHT_GREEN} to launch your personal AI!   │{RESET}")
     print(f"{BRIGHT_GREEN}  ╰─────────────────────────────────────────────────────────────╯{RESET}\n")
@@ -177,14 +193,18 @@ def check_credentials():
     token = env.get("TELEGRAM_BOT_TOKEN", "")
     is_valid_token = token and token != "your_telegram_bot_token_here"
     allowed = env.get("ALLOWED_TELEGRAM_USER_IDS", "")
-    nebius = env.get("NEBIUS_API_KEY", "")
-    is_valid_nebius = nebius and nebius != "your_nebius_api_key_here"
+    nv_key = env.get("NVIDIA_API_KEY", "")
+    is_valid_nv = nv_key and nv_key.startswith("nvapi-")
+    neb_key = env.get("NEBIUS_API_KEY", "")
+    is_valid_neb = neb_key and neb_key != "your_nebius_api_key_here"
+    
     return {
         "token_ok": is_valid_token,
         "token_val": token,
         "whitelist_ok": bool(allowed),
         "whitelist_val": allowed,
-        "nebius_ok": is_valid_nebius
+        "nvidia_ok": is_valid_nv,
+        "nebius_ok": is_valid_neb
     }
 
 def cmd_up():
@@ -216,12 +236,18 @@ def cmd_status():
     creds = check_credentials()
     tg_icon = f"{GREEN}● Configured{RESET}" if creds["token_ok"] else f"{YELLOW}○ Not set (Run: nemoclaw setup){RESET}"
     wl_icon = f"{GREEN}● Locked to ID: {creds['whitelist_val']}{RESET}" if creds["whitelist_ok"] else f"{GRAY}○ Open / Dev Mode{RESET}"
-    neb_icon = f"{GREEN}● Live Nebius Serverless{RESET}" if creds["nebius_ok"] else f"{GRAY}○ Offline Fallback Reasoner{RESET}"
+    
+    if creds["nvidia_ok"]:
+        brain_icon = f"{GREEN}● Live (NVIDIA Developer API / build.nvidia.com){RESET}"
+    elif creds["nebius_ok"]:
+        brain_icon = f"{GREEN}● Live (Nebius Serverless){RESET}"
+    else:
+        brain_icon = f"{GRAY}○ Offline Fallback Reasoner{RESET}"
 
     print(f"  {BOLD}🔐 Credentials & Security State:{RESET}")
     print(f"    • Telegram Token:   {tg_icon}")
     print(f"    • User Whitelist:   {wl_icon}")
-    print(f"    • NVIDIA Nemotron:  {neb_icon}")
+    print(f"    • Brain / LLM:      {brain_icon}")
     print()
 
     print(f"  {BOLD}📋 Available Commands:{RESET}")

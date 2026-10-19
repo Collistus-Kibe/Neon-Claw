@@ -63,8 +63,21 @@ def get_banner(node_role: str = "Home Server", tailscale_ip: str = "100.64.0.1")
         plain_len = 16 + len(val_plain)
         return row(f"{GRAY}{label:<16}{RESET}{val_colored}", plain_len)
 
-    r_brain = item("Brain Model", f"{BOLD}nvidia/Llama-3.1-Nemotron-70B-Instruct{RESET}", "nvidia/Llama-3.1-Nemotron-70B-Instruct")
-    r_infer = item("Inference", f"{CYAN}Nebius Serverless / Token Factory{RESET}", "Nebius Serverless / Token Factory")
+    nv_key = os.getenv("NVIDIA_API_KEY", "")
+    neb_key = os.getenv("NEBIUS_API_KEY", "")
+    
+    if nv_key.startswith("nvapi-") or (nv_key and nv_key != "your_nvidia_api_key_here"):
+        brain_name = os.getenv("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
+        infer_name = "NVIDIA Developer API (build.nvidia.com)"
+    elif neb_key and neb_key != "your_nebius_api_key_here":
+        brain_name = os.getenv("NEBIUS_MODEL", "nvidia/Llama-3.1-Nemotron-70B-Instruct")
+        infer_name = "Nebius Serverless / Token Factory"
+    else:
+        brain_name = "NVIDIA Nemotron 70B (Dual-Provider)"
+        infer_name = "NVIDIA NIM / build.nvidia.com (or Offline Fallback)"
+
+    r_brain = item("Brain Model", f"{BOLD}{brain_name}{RESET}", brain_name)
+    r_infer = item("Inference", f"{CYAN}{infer_name}{RESET}", infer_name)
     r_cog = item("Cognitive Core", f"{YELLOW}Hermes Agent (Nous Research Skills Engine){RESET}", "Hermes Agent (Nous Research Skills Engine)")
     r_sand = item("Sandboxing", f"{PURPLE}NVIDIA OpenShell (Landlock + Seccomp BPF){RESET}", "NVIDIA OpenShell (Landlock + Seccomp BPF)")
     r_web = item("Web Engine", f"{BRIGHT_CYAN}Obscura Stealth Headless Browser (Playwright){RESET}", "Obscura Stealth Headless Browser (Playwright)")

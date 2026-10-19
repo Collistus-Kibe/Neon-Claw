@@ -3,7 +3,7 @@
 > **Always-on private personal AI agent commanded from your phone via Telegram. Operates seamlessly across your Home Server, Cloud, and Laptop with distributed task offloading, self-learning skills, and private Dual-Tier Vaults.**
 
 [![NVIDIA Nemotron](https://img.shields.io/badge/Brain-NVIDIA_Nemotron_70B-76B900?logo=nvidia&logoColor=white)](https://build.nvidia.com/)
-[![Inference](https://img.shields.io/badge/Inference-Nebius_Serverless-blue)](https://studio.nebius.ai/)
+[![Inference](https://img.shields.io/badge/Inference-NVIDIA_API_%2F_Nebius-blue)](https://build.nvidia.com/)
 [![Hermes Agent](https://img.shields.io/badge/Engine-Hermes_Agent-purple)](https://nousresearch.com/)
 [![Security](https://img.shields.io/badge/Sandbox-NVIDIA_OpenShell-orange)](https://github.com/nvidia)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -12,7 +12,7 @@
 
 ## 🌟 Overview
 
-**NemoClaw** bridges state-of-the-art open-weights reasoning with total data sovereignty. Commanded directly from your phone via Telegram, it operates seamlessly across your **Home Server**, **Cloud Host (Nebius / VPS)**, and **Workstation Laptop**. 
+**NemoClaw** bridges state-of-the-art open-weights reasoning with total data sovereignty. Commanded directly from your phone via Telegram, it operates seamlessly across your **Home Server**, **Cloud Host**, and **Workstation Laptop**. 
 
 Deploy it 24/7 on your home server or a cloud virtual machine to handle web research, background monitoring, and message intake, while offloading workstation-specific tasks (local code, local files, and git) to your laptop via Tailscale.
 
@@ -32,8 +32,8 @@ Deploy it 24/7 on your home server or a cloud virtual machine to handle web rese
        │  └──────────┼──────────────────────┼────────────────┘  │
        │             │                      │                   │
        │             ▼                      ▼ Live Screenshot   │
-       │  ⚡ Nebius Serverless         Telegram Media Delivery │
-       │     (nvidia/Llama-3.1-Nemotron-70B-Instruct)           │
+       │  ⚡ NVIDIA Developer API / NIM  Telegram Media Delivery│
+       │     (nvidia/llama-3.1-nemotron-70b-instruct)           │
        │                                                        │
        │  💾 Dual-Tier Storage Layer:                           │
        │     ├── 🌐 Shared Vault DB (Memories & Skills)         │
@@ -55,7 +55,7 @@ Deploy it 24/7 on your home server or a cloud virtual machine to handle web rese
 
 ## 🚀 Key Features
 
-* **🧠 Frontier Reasoning via NVIDIA Nemotron**: Powered by `nvidia/Llama-3.1-Nemotron-70B-Instruct` served with high throughput via **Nebius Serverless / Token Factory API**.
+* **🧠 Frontier Reasoning via NVIDIA Nemotron**: Powered by `nvidia/llama-3.1-nemotron-70b-instruct` served via **NVIDIA Developer API (`build.nvidia.com`)** or **Nebius Serverless**, with deterministic zero-downtime offline fallback.
 * **🛠️ Hermes Agent & Reusable Skills**: Autonomous multi-step function calling loop that synthesizes successful workflows into reusable skills stored in your Shared Vault.
 * **🌐 Obscura Stealth Headless Browser**: Containerized Playwright Chromium engine with evasive stealth headers. Navigates pages, bypasses anti-bot walls, and sends full-page screenshots directly to your phone via Telegram.
 * **💾 Dual-Tier Storage Architecture**:
@@ -68,7 +68,7 @@ Deploy it 24/7 on your home server or a cloud virtual machine to handle web rese
 ---
 
 ## ⚡ Quickstart
-
+ 
 ### 1. Fast Setup (Interactive CLI Wizard)
 Run the built-in configuration wizard:
 ```bash
@@ -78,7 +78,10 @@ python nemoclaw.py setup
 ```cmd
 nemoclaw setup
 ```
-Follow the interactive prompts to enter your **Telegram Bot Token** (from [@BotFather](https://t.me/botfather)) and **Telegram User ID** (from [@userinfobot](https://t.me/userinfobot)).
+Follow the interactive prompts to enter:
+1. **Telegram Bot Token** (from [@BotFather](https://t.me/botfather))
+2. **Telegram User ID** (from [@userinfobot](https://t.me/userinfobot) to whitelist your phone)
+3. **NVIDIA Developer API Key** (from [build.nvidia.com](https://build.nvidia.com/) — format: `nvapi-...` with free developer credits, or Nebius key)
 
 ### 2. Launch Home Server Mesh
 ```cmd

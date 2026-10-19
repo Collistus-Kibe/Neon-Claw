@@ -219,3 +219,5 @@ Neon Claw/                              # Project root
 | 2026-10-18 | Added Claude-Code Style Startup Banner & Unified CLI Control Plane (`nemoclaw.py`, `nemoclaw.bat`, `nemoclaw.ps1`, `banner.py`, `banner.js`) | `nemoclaw.py`, `nemoclaw.bat`, `nemoclaw.ps1`, `neon-claw/banner.py`, `neon-claw/banner.js`, `neoncore/index.js`, `neonpulse/bot.js` |
 | 2026-10-18 | Prepared for GitHub: Created root `README.md` showcase and `.gitignore` to protect `.env` secrets & SQLite databases | `README.md`, `.gitignore` |
 | 2026-10-18 | Refined GitHub positioning & README: Centered focus on the personal AI agent itself (phone control, multi-host, self-learning skills, vaults) | `README.md` |
+| 2026-10-18 | Added NVIDIA Developer API (build.nvidia.com) support: Auto-detects `nvapi-...` keys, integrates `integrate.api.nvidia.com/v1`, updated setup wizard & compose | `nebius_client.py`, `nemoclaw.py`, `docker-compose.yml`, `.env.example`, `engineering.md` |
+

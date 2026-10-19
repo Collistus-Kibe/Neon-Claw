@@ -4,7 +4,7 @@ An always-on, privacy-first personal AI assistant built for **Total Data Soverei
 Operates across your **Home Server**, **Workstation Laptop**, and **Mobile Phone (via Telegram)**.
 
 Powered by:
-- 🧠 **NVIDIA Nemotron** (`nvidia/Llama-3.1-Nemotron-70B-Instruct`) via **Nebius Serverless**
+- 🧠 **NVIDIA Nemotron** (`nvidia/llama-3.1-nemotron-70b-instruct`) via **NVIDIA Developer API** (or Nebius Serverless)
 - 🛠️ **Hermes Agent** (Nous Research) cognitive reasoning & self-improving skill engine
 - 🛡️ **NVIDIA OpenShell** sandboxing & kernel policy isolation
 - 🌐 **Obscura Headless Stealth Browser** (Playwright + Chromium) with live screenshot streaming
@@ -23,7 +23,8 @@ cp .env.example .env
 Edit `.env` and fill in:
 * `TELEGRAM_BOT_TOKEN`: Your Telegram Bot token from [@BotFather](https://t.me/botfather).
 * `ALLOWED_TELEGRAM_USER_IDS`: Your Telegram numerical User ID (from [@userinfobot](https://t.me/userinfobot)) to lock the assistant to your account.
-* `NEBIUS_API_KEY`: Your Nebius AI Studio API key (or leave blank to use the built-in offline reasoner).
+* `NVIDIA_API_KEY`: Your NVIDIA Developer API key from [build.nvidia.com](https://build.nvidia.com/) (starts with `nvapi-...`).
+* `NEBIUS_API_KEY`: Optional fallback key (or leave blank to use the built-in offline reasoner).
 
 ### 2. Launch Home Server Mesh (Docker Compose)
 From the `neon-claw/` directory:
