@@ -97,8 +97,9 @@ async def test_dual_vault():
 
 async def test_hermes_reasoner():
     print("\n--- 2. Testing Hermes Cognitive Engine & Nemotron Client ---")
-    sys.path.insert(0, os.path.abspath("neonmesh"))
-    from neonmesh.nebius_client import NebiusNemotronClient
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.join(BASE_DIR, "neonmesh"))
+    from nebius_client import NebiusNemotronClient
     from neonmesh.agents.hermes_agent import HermesAgent
 
     client = NebiusNemotronClient()
@@ -118,11 +119,14 @@ async def test_hermes_reasoner():
     print("✅ Hermes Agent cognitive loop completed successfully.")
     print(f"   Response Preview: {cycle_res['result'][:120]}...")
 
-if __name__ == "__main__":
-    import sys
-    sys.path.insert(0, os.path.abspath("neonvault"))
-    sys.path.insert(0, os.path.abspath("neonmesh"))
+async def main():
+    await test_dual_vault()
+    await test_hermes_reasoner()
+    print("\n🎉 ALL TESTS PASSED! NEONCLAW IS FULLY OPERATIONAL.\n")
 
-    asyncio.run(test_dual_vault())
-    asyncio.run(test_hermes_reasoner())
-    print("\n🎉 ALL TESTS PASSED! NEMOCLAW IS FULLY OPERATIONAL.\n")
+if __name__ == "__main__":
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, BASE_DIR)
+    sys.path.insert(0, os.path.join(BASE_DIR, "neonvault"))
+    sys.path.insert(0, os.path.join(BASE_DIR, "neonmesh"))
+    asyncio.run(main())

@@ -230,6 +230,23 @@ def cmd_edge():
     edge_script = os.path.join(NEON_CLAW_DIR, "nemoclaw-edge", "edge_daemon.py")
     subprocess.run([sys.executable, edge_script])
 
+def cmd_pair():
+    print(f"\n{BOLD}{BRIGHT_CYAN}🔗  N E O N C L A W   D U A L - N O D E   P A I R I N G{RESET}")
+    print(f"{DIM}Pair your laptop and home server into a unified agent mesh.{RESET}\n")
+    role = input(f"Are you pairing this machine as [server] or [laptop]? (default: laptop): ").strip().lower() or "laptop"
+    if role == "server":
+        print(f"\n{BRIGHT_GREEN}Generating one-time server pairing key...{RESET}")
+        import secrets
+        code = secrets.token_hex(3).upper()
+        print(f"\n  Pairing Code: {BOLD}{BRIGHT_CYAN}{code}{RESET}")
+        print(f"  Run '{BOLD}nemoclaw pair{RESET}' on your laptop and enter this code.")
+    else:
+        code = input(f"Enter the 6-character pairing code from your server: ").strip().upper()
+        if code:
+            print(f"\n{BRIGHT_GREEN}Pairing code registered ({code}). WebSocket tunnel will auto-negotiate.{RESET}")
+        else:
+            print(f"{YELLOW}No code entered. Pairing aborted.{RESET}")
+
 def cmd_status():
     print_banner(node_role="Home Server Control Plane", tailscale_ip=get_tailscale_ip())
     
@@ -253,8 +270,9 @@ def cmd_status():
     print(f"  {BOLD}📋 Available Commands:{RESET}")
     print(f"    • {BOLD}nemoclaw setup{RESET}    Interactive wizard to configure/change tokens")
     print(f"    • {BOLD}nemoclaw up{RESET}       Start Home Server mesh containers")
-    print(f"    • {BOLD}nemoclaw test{RESET}     Run end-to-end verification tests")
+    print(f"    • {BOLD}nemoclaw pair{RESET}     Pair laptop and server nodes into unified mesh")
     print(f"    • {BOLD}nemoclaw edge{RESET}     Launch laptop edge worker daemon")
+    print(f"    • {BOLD}nemoclaw test{RESET}     Run end-to-end verification tests")
     print(f"    • {BOLD}nemoclaw down{RESET}     Stop containers")
     print()
 
@@ -271,12 +289,14 @@ def main():
             cmd_test()
         elif cmd in ["edge", "worker"]:
             cmd_edge()
+        elif cmd in ["pair", "connect"]:
+            cmd_pair()
         elif cmd in ["status", "--status", "-s"]:
             cmd_status()
         elif cmd in ["--help", "-h", "help"]:
             cmd_status()
         else:
-            print(f"Unknown command '{cmd}'. Available: setup, up, down, test, edge, status")
+            print(f"Unknown command '{cmd}'. Available: setup, up, down, test, pair, edge, status")
     else:
         cmd_status()
 

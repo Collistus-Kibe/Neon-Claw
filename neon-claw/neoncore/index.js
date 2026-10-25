@@ -1,6 +1,5 @@
 const express = require('express');
 const { initQueue, taskQueue } = require('./taskQueue');
-const eventBus = require('./eventBus');
 const { printBanner } = require('./banner');
 
 const app = express();

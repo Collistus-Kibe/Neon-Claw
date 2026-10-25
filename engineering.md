@@ -2,213 +2,196 @@
 
 > **CRITICAL RULE FOR AI AGENTS:** You must read this file before suggesting any architectural changes. ANY time you write, modify, or delete code in this project during our session, you MUST output the required updates to this `engineering.md` file to reflect the new state. Do not skip this step.
 
-> **Last Updated:** 2026-10-18T20:41:00+03:00
+> **Last Updated:** 2026-10-25T20:08:00+03:00  
+> **System Version:** NeonClaw v2.0 (Unified Dual-Node Personal AI Agent)
 
 ---
 
-## 1. Project Overview & Architecture
+## 1. Project Overview & Architecture v2
 
-**NemoClaw (Neon Claw)** is an always-on, privacy-first personal AI assistant operating across an **Always-On Home Server**, **Workstation Laptop**, and **Mobile Phone (via Telegram)**. It combines frontier reasoning from open-source NVIDIA models (`nvidia/Llama-3.1-Nemotron-70B-Instruct`) with strict kernel-level sandboxing (NVIDIA OpenShell), self-improving skill acquisition (Hermes Agent), an open-source headless browser (Obscura), and a **Dual-Tier Database Architecture** (Shared + Personal Vaults).
+**NeonClaw** is an always-on, privacy-first personal AI assistant that operates across a **Home Server**, **Workstation Laptop**, and **Mobile Phone (via Telegram)** as **one unified entity**. 
+
+Instead of feeling like two separate systems, NeonClaw acts as a single mind with two physical nodes:
+1. **🏠 Server Node (Always-On):** Runs Telegram bot, task queue, autonomous multi-step Hermes agent, Obscura stealth browser, memory API, and shared/personal vaults.
+2. **💻 Laptop Node (When Available):** Runs lightweight edge daemon with local tools (shell command execution, git repo management, local filesystem access, clipboard, system browser).
+3. **📱 Mobile Control (Telegram):** Natural language interface from your phone with user ID whitelisting, media delivery, and remote status checks.
+4. **🔗 NeonBridge (Mesh Tunnel):** Persistent, encrypted WebSocket tunnel connecting Laptop ⇄ Server over Tailscale/WireGuard or direct WS fallback with HMAC message authentication.
+
+```
+                         📱 Your Phone (Telegram)
+                                  │
+                    ╔══════════════╧══════════════╗
+                    ║     NeonClaw Unified Brain   ║
+                    ║   (Feels like ONE assistant) ║
+                    ╚══════════════╤══════════════╝
+                                   │
+            ┌──────────────────────┼──────────────────────┐
+            │                      │                      │
+            ▼                      │                      ▼
+  ┌─────────────────────┐         │        ┌─────────────────────┐
+  │ 🏠 SERVER NODE       │         │        │ 💻 LAPTOP NODE       │
+  │ (Always-On)          │◄────────┘───────►│ (When Available)     │
+  │                      │   Encrypted      │                      │
+  │ • Telegram Bot       │   WebSocket      │ • Local File Access  │
+  │ • Obscura Browser    │   Tunnel         │ • Git Operations     │
+  │ • Redis Task Queue   │ (Tailscale/      │ • IDE Integration    │
+  │ • Hermes Agent       │  WireGuard/      │ • Local Code Exec    │
+  │ • Shared Vault (DB)  │  Direct WS)      │ • System Clipboard   │
+  │ • Personal Vault     │                  │ • Personal Vault     │
+  │ • NeonMem API        │                  │ • Heartbeat Reporter │
+  └─────────────────────┘                  └─────────────────────┘
+```
 
 ### Technology Stack
 
 | Layer        | Technology                          |
 |--------------|-------------------------------------|
-| Brain Model  | `nvidia/Llama-3.1-Nemotron-70B-Instruct` via Nebius Serverless (`api.studio.nebius.ai/v1`) |
-| Cognitive    | Hermes Agent (Nous Research) with autonomous skill acquisition |
-| Sandboxing   | NVIDIA OpenShell (Linux Landlock, Seccomp BPF, OPA network policies) |
-| Web Browser  | Obscura Headless Browser (Playwright Stealth + Chromium Sandbox) |
-| Runtime      | Node.js 20 (Alpine), Python 3.11   |
-| Orchestrator | Docker Compose (NemoClaw Core)     |
-| Queue        | Redis 7 (Alpine) + BullMQ 4.14     |
-| HTTP Server  | Express 4.18 (JS), FastAPI (Python) |
-| HTTP Client  | Axios 1.6 (JS), httpx (Python)     |
-| Databases    | Dual Vaults: `shared_vault.db` (sync) + `personal_vault.db` (per-node) |
-| Mobile Bot   | Telegraf 4.15 (Telegram Bot API, voice & direct text) |
-| Mesh Tunnel  | WireGuard / Tailscale (Home Server <-> Laptop Offloading) |
-
-### Inter-Service Communication Map
-
-| Source    | Target   | Protocol   | Endpoint(s)                            |
-|-----------|----------|------------|----------------------------------------|
-| NeonPulse | Redis    | BullMQ     | Queue: `neon-tasks`                    |
-| NeonCore  | Redis    | BullMQ     | Queue: `neon-tasks` (worker), `neon-replies` (producer) |
-| NeonPulse | Redis    | BullMQ     | Queue: `neon-replies` (worker)         |
-| NeonCore  | NeonMesh | HTTP POST  | `/router`, `/agent/{agent_type}`       |
-| NeonCore  | NeonMem  | HTTP POST  | `/remember`                            |
-| NeonMem   | NeonVault| HTTP POST/GET/DELETE | `/memories`, `/memories/{id}` |
-| NeonPulse | NeonMem  | HTTP POST  | `/recall` (via `/memory` command)      |
+| Brain Model  | NVIDIA Nemotron 70B via NVIDIA Developer API (`build.nvidia.com`) or Nebius Serverless (`api.studio.nebius.ai/v1`) |
+| Cognitive    | Hermes Agent (Nous Research) with multi-step tool execution & autonomous skill acquisition |
+| Sandboxing   | NVIDIA OpenShell architectural model (Landlock, Seccomp BPF, allowlisted command execution) |
+| Web Browser  | Obscura Headless Browser (Playwright Stealth + Chromium Sandbox + HTTP fallback) |
+| Inter-Node Tunnel | NeonBridge: Persistent WebSocket tunnel over Tailscale P2P (100.64.x.x) or direct HTTPS fallback |
+| Storage      | Dual Vaults: `shared_vault.db` (synced memories & skills) + `personal_vault.db` (local node secrets & telemetry) |
+| Mobile Bot   | Telegraf (Telegram Bot API, voice & direct text, media streaming) |
+| Runtime      | Python 3.11, Node.js 20 (Alpine for Docker mode) |
+| CLI Plane    | `nemoclaw.py` unified CLI (`setup`, `up`, `down`, `test`, `pair`, `edge`, `status`) |
 
 ---
 
-## 2. Current State & Recent Changes
-
-### Working State: **Skeleton / Stubs Only**
-
-The entire system boots and wires together, but **all AI "brain" logic is stubbed**. Every agent returns hardcoded placeholder strings. The system is architecturally complete for the happy path but has zero real intelligence.
+## 2. Current State & Subsystems
 
 ### What Works
-- ✅ Docker Compose brings up all 7 containers (redis, neoncore, neonmesh, neonmem, neonpulse, neonshell, neonvault)
-- ✅ Telegram bot connects (if `TELEGRAM_BOT_TOKEN` is set) and accepts `/start`, `/ask`, `/mode`, `/memory`, `/status` commands
-- ✅ Task queue pipeline: NeonPulse → Redis → NeonCore → NeonMesh → NeonMem → NeonVault (full round-trip)
-- ✅ Reply pipeline: NeonCore enqueues to `neon-replies`, NeonPulse worker delivers to Telegram
-- ✅ NeonVault SQLite persistence (schema auto-created on startup)
-- ✅ NeonShell mode detection (live/dark) written to shared volume
+- ✅ **Upgraded Terminal Banner v2** — High-aesthetic ASCII art, ANSI gradient colors, and live dual-node indicators (`neon-claw/banner.py`)
+- ✅ **Unified CLI Control Plane** (`nemoclaw.py`, `nemoclaw.bat`, `nemoclaw.ps1`) — Setup wizard, credentials verification, status view, pairing stub, and execution control
+- ✅ **Dual-Provider Frontier LLM Client** (`nebius_client.py`) — Supports NVIDIA Developer API (`build.nvidia.com`), Nebius Serverless, and zero-downtime offline fallback
+- ✅ **Autonomous Hermes Agent** (`hermes_agent.py`) — Multi-step tool loop (browsing, memory recall/storage, skill synthesis)
+- ✅ **Dual-Tier Database Architecture** (`vault.py`, `shared_schema.sql`, `personal_schema.sql`) — Isolated shared vault and personal vault
+- ✅ **Obscura Stealth Browser** (`obscura/server.py`) — Playwright Chromium with bot-detection evasions and full-page screenshot capture
+- ✅ **Natural Language Telegram Bot** (`neonpulse/bot.js`) — Direct conversational text, user whitelist security, media photo delivery
+- ✅ **Task Queue Pipeline** (`neoncore/taskQueue.js`) — Redis BullMQ orchestrating route → agent → memory → reply
+- ✅ **Laptop Edge Daemon** (`nemoclaw-edge/edge_daemon.py`) — Telemetry collection (CPU, RAM, disk, battery, Tailscale IP)
+- ✅ **Repository Hygiene & Dead Code Cleanup** — 11 empty/unused directories and all `__pycache__` artifacts permanently removed
 
-### What Is Stubbed / Not Implemented
-- ❌ **Brain Interface** — `brain_interface/stub.py` returns hardcoded strings; no LLM connected
-- ❌ **Router Logic** — Always returns `"research"` regardless of prompt
-- ❌ **Memory Backends** — `chroma_backend.py`, `redis_backend.py`, `sqlite_backend.py` are all empty placeholders
-- ❌ **Memory Consolidation** — `consolidation.py` is a placeholder (intended for decay/REM cycles)
-- ❌ **NeonMem Reflect** — `/reflect` endpoint logs but does nothing meaningful
-- ❌ **Natural Language Mode** — Bot requires slash commands (`/ask`); no free-text handling
-- ❌ **src/agents/** — Empty directory (unused)
-- ❌ **src/mcp/** — Empty directory (unused)
-- ❌ **config/bob_settings.json** — Empty file
+### Active Roadmap (v2 Dual-Node Evolution)
 
-### Known Issues & Risks
-- `@app.on_event("startup")` in NeonVault is deprecated in newer FastAPI; should migrate to lifespan handler
-- NeonPulse `bot.command('status')` is hardcoded — does not actually ping services
-- No health checks configured in `docker-compose.yml`
-- No `.env` file shipped (only `.env.example`); deployment requires manual setup
-- `neon_mode.txt` shared volume path assumes Linux containers; NeonShell pings `8.8.8.8` which may fail in restricted networks
+#### Phase 1: Cleanup & Foundation (COMPLETED ✅)
+- [x] Full codebase audit and scan
+- [x] Remove dead directories (`src/`, `config/`, `data/`, `neonmesh/brain_interface/`, `neonmem/backends/`, `__pycache__/`)
+- [x] Banner upgrade to v2 with ASCII art and dual-node indicators
+- [x] Update `engineering.md` and `README.md`
 
-### Recent Session Context (from conversation history)
-1. **DeepSeek API Integration** — Work began on connecting `OLLAMA_CLOUD_API_KEY_1` via a test script to replace brain stubs
-2. **Natural Language Bot Refactor** — Intent to remove mandatory `/ask` slash commands and handle all text as AI prompts
-3. **Database Init Fixes** — SQLite initialization errors were investigated and resolved in prior sessions
+#### Phase 2: NeonBridge WebSocket Mesh Tunnel (NEXT)
+- [ ] Create `neon-claw/neonbridge/` (WebSocket server + client)
+- [ ] Implement NeonClaw Mesh Protocol (NMP) with HMAC message signing
+- [ ] Pairing handshake (`nemoclaw pair` with 6-char one-time exchange)
+- [ ] Auto-reconnect with exponential backoff & latency tracking
 
----
+#### Phase 3: Laptop Task Execution Engine
+- [ ] Upgrade `edge_daemon.py` with local execution capabilities:
+  - `exec_command` with strict allowlist
+  - `read_file` / `write_file` for local project access
+  - `git_status` / `git_diff` / `git_commit`
+  - `clipboard_read` / `clipboard_write`
+  - `open_url` in default host desktop browser
 
-## 3. Active Tasks / Roadmap (Personal Agent Architecture)
+#### Phase 4: Intelligent Dual-Node Routing
+- [ ] Hermes Agent routing heuristics: server vs. laptop execution target
+- [ ] Capability advertisement and offline task queuing
 
-### Phase 1: Security Hardening & Zero-Trust Base
-- [x] **Close Exposed Ports** — Restricted host port mappings to `127.0.0.1` for `redis`, `neonmesh`, `neonmem`, `neonvault`
-- [x] **Telegram User Whitelisting** — Enforced `ALLOWED_TELEGRAM_USER_IDS` in `neonpulse/bot.js`
-- [x] **Fix IDOR in NeonVault** — Scoped `user_id` validation for memory deletion in `vault.py`
-- [x] **Add Request Timeouts** — Configured explicit timeouts on Axios and HTTPX requests
+#### Phase 5: Pure Python Native Stack (Zero Docker Option)
+- [ ] Python Telegram Bot (`aiogram` / `python-telegram-bot`)
+- [ ] In-process task queue (`asyncio.Queue` + SQLite)
+- [ ] Single-command native runner (`nemoclaw up --native`)
 
-### Phase 2: Natural Telegram UX & LLM Brain Activation
-- [x] **Connect Real LLM Brain** — Implemented `nebius_client.py` with `nvidia/Llama-3.1-Nemotron-70B-Instruct` and offline fallback
-- [x] **Hermes Agent Cognitive Engine** — Built `agents/hermes_agent.py` with tool execution and self-improving skills
-- [x] **Natural Language Bot** — Implemented `bot.on('text')` in `neonpulse/bot.js` (no `/ask` needed)
-- [x] **Intelligent Intent Router** — Dynamic classification in `router_agent.py`
-
-### Phase 3: Obscura Headless Browser Worker
-- [x] **Playwright Stealth Container** — Built `neon-claw/obscura/` service with Playwright Chromium & stealth evasions
-- [x] **Web Automation Tools** — Implemented `/navigate` and full-page screenshot capture
-- [x] **Telegram Media Streaming** — Forwarding base64 screenshots to Telegram chat via `replyWorker`
-
-### Phase 4: Dual Vault & Laptop Hybrid Offloading Mesh
-- [x] **Dual-Tier Database Architecture** — Separated `shared_vault.db` (memories, skills) and `personal_vault.db` (local secrets, telemetry)
-- [x] **Tailscale Network Awareness** — Added Tailscale peer detection in `neonshell/shell.py`
-- [x] **Laptop Edge Daemon** — Built `nemoclaw-edge/edge_daemon.py` for workstation telemetry and offload execution
-
-### Phase 5: Voice Notes & Semantic Vector Memory (Next Steps)
-- [ ] **Telegram Voice Note Transcription** — Transcribe `.ogg` voice notes via Whisper
-- [ ] **Vector Memory Integration** — Vector embeddings and semantic recall in `neonmem`
+#### Phase 6: Voice Notes & Semantic Memory
+- [ ] Whisper voice transcription for `.ogg` Telegram voice notes
+- [ ] Sentence-transformers embedding search in `neonmem`
 
 ---
 
-## 4. File Structure & Component Roles
+## 3. File Structure v2
 
 ```
-Neon Claw/                              # Project root
-├── engineering.md                      # THIS FILE — project state (source of truth)
-├── config/
-│   └── bob_settings.json               # Bot persona/settings config (EMPTY)
-├── data/                               # Runtime data directory (EMPTY)
-├── src/
-│   ├── agents/                         # Future agent code (EMPTY)
-│   └── mcp/                            # Future MCP integration (EMPTY)
-└── neon-claw/                          # Microservices root
-    ├── README.md                       # Setup instructions
-    ├── .env.example                    # Template: TELEGRAM_BOT_TOKEN
-    ├── docker-compose.yml              # Orchestrates all 7 containers
+Neon Claw/                                  # Project root (GitHub repo)
+├── README.md                               # Showcase & quickstart documentation
+├── LICENSE                                 # MIT License
+├── .gitignore                              # Protects .env, .db, and cache files
+├── engineering.md                          # THIS FILE — project state & architecture
+├── nemoclaw.py                             # 🎯 Unified CLI: setup, up, down, test, pair, edge
+├── nemoclaw.bat                            # Windows cmd.exe launcher
+├── nemoclaw.ps1                            # Windows PowerShell launcher
+│
+└── neon-claw/                              # Services directory
+    ├── banner.py                           # ⬆️ UPGRADED v2: ASCII art + dual-node banner
+    ├── compat.py                           # Starlette/FastAPI compatibility shim
+    ├── docker-compose.yml                  # Docker orchestration (server mode)
+    ├── .env.example                        # Environment template
+    ├── test_system.py                      # Verification test suite
     │
-    ├── neoncore/                       # ORCHESTRATOR — Central task dispatcher
-    │   ├── Dockerfile                  #   Node.js 20 Alpine, port 3000
-    │   ├── package.json                #   express, bullmq, ioredis, axios
-    │   ├── index.js                    #   Express server, POST /ask → enqueues to BullMQ
-    │   ├── router.js                   #   Calls NeonMesh /router to classify prompt intent
-    │   ├── taskQueue.js                #   BullMQ worker: route → call agent → save memory → reply
-    │   └── eventBus.js                 #   Node EventEmitter (unused, scaffolding)
+    ├── neoncore/                           # Task Dispatcher (Node.js for Docker)
+    │   ├── Dockerfile
+    │   ├── package.json
+    │   ├── index.js
+    │   ├── router.js
+    │   ├── taskQueue.js
+    │   └── banner.js
     │
-    ├── neonmesh/                       # AGENT MESH — AI agent dispatch + brain interface
-    │   ├── Dockerfile                  #   Python 3.11, uvicorn, port 8001
-    │   ├── requirements.txt            #   fastapi, uvicorn, httpx, python-dotenv
-    │   ├── main.py                     #   FastAPI: POST /router, POST /agent/{type}
-    │   ├── brain_interface/
-    │   │   ├── __init__.py
-    │   │   └── stub.py                 #   Stub functions: generate_router, generate_primary,
-    │   │                               #     generate_deep, transcribe_audio, analyze_image
+    ├── neonmesh/                           # Agent Engine (Python)
+    │   ├── Dockerfile
+    │   ├── requirements.txt
+    │   ├── main.py
+    │   ├── nebius_client.py                # Dual NVIDIA/Nebius client + offline fallback
     │   └── agents/
     │       ├── __init__.py
-    │       ├── base_agent.py           #   BaseAgent ABC with process() method
-    │       ├── router_agent.py         #   Routes via brain stub (always returns "research")
-    │       ├── research_agent.py       #   Calls generate_primary(prompt, "Research context")
-    │       ├── code_agent.py           #   Calls generate_primary(prompt, "Code context")
-    │       ├── write_agent.py          #   Calls generate_primary(prompt, "Write context")
-    │       └── analyze_agent.py        #   Calls analyze_image(b'', prompt)
+    │       ├── base_agent.py
+    │       ├── hermes_agent.py             # Multi-step tool loop & skill synthesizer
+    │       └── router_agent.py
     │
-    ├── neonmem/                        # MEMORY LAYER — Abstraction over storage backends
-    │   ├── Dockerfile                  #   Python 3.11, uvicorn, port 8002
-    │   ├── requirements.txt            #   fastapi, uvicorn, httpx
-    │   ├── api.py                      #   FastAPI: /remember, /recall, /forget/{id}, /reflect
-    │   ├── consolidation.py            #   Placeholder for decay/REM cycles
-    │   └── backends/
-    │       ├── __init__.py
-    │       ├── chroma_backend.py       #   Placeholder (EMPTY)
-    │       ├── redis_backend.py        #   Placeholder (EMPTY)
-    │       └── sqlite_backend.py       #   Placeholder (EMPTY)
+    ├── neonmem/                            # Memory API (Python)
+    │   ├── Dockerfile
+    │   ├── requirements.txt
+    │   └── api.py                          # Remember, recall, forget, skills, reflect
     │
-    ├── neonpulse/                      # USER INTERFACE — Telegram bot
-    │   ├── Dockerfile                  #   Node.js 20 Alpine
-    │   ├── package.json                #   telegraf, bullmq, ioredis, axios, dotenv
-    │   ├── bot.js                      #   Telegraf bot: /start, /ask, /mode, /memory, /status
-    │   │                               #     + BullMQ worker for neon-replies → Telegram delivery
-    │   └── formatter.js                #   Wraps responses with "[Agent Response]\n" prefix
+    ├── neonvault/                          # Dual Vault Persistence (Python)
+    │   ├── Dockerfile
+    │   ├── requirements.txt
+    │   ├── shared_schema.sql               # Memories, skills
+    │   ├── personal_schema.sql             # Node secrets, telemetry
+    │   └── vault.py
     │
-    ├── neonshell/                      # ENVIRONMENT MONITOR — Network mode detection
-    │   ├── Dockerfile                  #   Python 3.11
-    │   ├── requirements.txt            #   schedule, python-dotenv
-    │   └── shell.py                    #   Pings 8.8.8.8 every 30s → writes "live"/"dark" to
-    │                                   #     /shared/neon_mode.txt (shared Docker volume)
+    ├── neonpulse/                          # Telegram Bot (Node.js for Docker)
+    │   ├── Dockerfile
+    │   ├── package.json
+    │   ├── bot.js                          # Natural language Telegram interface
+    │   ├── banner.js
+    │   └── formatter.js
     │
-    └── neonvault/                      # PERSISTENCE — SQLite database backend
-        ├── Dockerfile                  #   Python 3.11, uvicorn, port 8003
-        ├── requirements.txt            #   fastapi, uvicorn, aiosqlite
-        ├── schema.sql                  #   Table: memories (id, content, user_id, agent_id, tags, created_at)
-        └── vault.py                    #   FastAPI: POST /memories, GET /memories, DELETE /memories/{id}
-                                        #     Auto-creates /data/neonvault.db on startup
+    ├── neonshell/                          # Network Monitor (Python)
+    │   ├── Dockerfile
+    │   ├── requirements.txt
+    │   └── shell.py                        # Network mode & Tailscale awareness
+    │
+    ├── obscura/                            # Stealth Browser (Playwright / Chromium)
+    │   ├── Dockerfile
+    │   ├── requirements.txt
+    │   └── server.py                       # Stealth navigation & screenshot capture
+    │
+    ├── neonbridge/                         # 🆕 WebSocket Mesh Tunnel (In Progress)
+    │   ├── __init__.py
+    │   ├── server.py                       # WS server (runs on server node)
+    │   ├── client.py                       # WS client (runs on laptop node)
+    │   ├── protocol.py                     # NMP message protocol + HMAC signing
+    │   └── pairing.py                      # One-time pairing code handshake
+    │
+    └── nemoclaw-edge/                      # Laptop Node Worker (Python)
+        ├── edge_daemon.py                  # Telemetry & task executor
+        ├── local_tools.py                  # 🆕 Filesystem, git, clipboard, shell tools
+        └── requirements.txt
 ```
-
-### Service Port Map
-
-| Service    | Internal Port | External Port | Language   |
-|------------|--------------|---------------|------------|
-| Redis      | 6379         | 6379          | —          |
-| NeonCore   | 3000         | (internal)    | Node.js    |
-| NeonMesh   | 8001         | 8001          | Python     |
-| NeonMem    | 8002         | 8002          | Python     |
-| NeonVault  | 8003         | 8003          | Python     |
-| NeonPulse  | —            | —             | Node.js    |
-| NeonShell  | —            | —             | Python     |
-
-### Environment Variables
-
-| Variable               | Used By               | Purpose                              |
-|------------------------|-----------------------|--------------------------------------|
-| `TELEGRAM_BOT_TOKEN`   | NeonPulse             | Telegram Bot API authentication      |
-| `REDIS_HOST`           | NeonCore, NeonPulse   | Redis connection host (default: `redis`) |
-| `REDIS_PORT`           | NeonCore, NeonPulse   | Redis connection port (default: `6379`)  |
-| `NEONMESH_URL`         | NeonCore              | NeonMesh base URL (default: `http://neonmesh:8001`) |
-| `NEONMEM_URL`          | NeonCore, NeonPulse   | NeonMem base URL (default: `http://neonmem:8002`)   |
-| `NEONVAULT_URL`        | NeonMem               | NeonVault base URL (default: `http://neonvault:8003`) |
 
 ---
 
-## 5. Change Log
+## 4. Change Log
 
 | Date       | Change                                      | Files Affected                 |
 |------------|---------------------------------------------|-------------------------------|
@@ -218,6 +201,6 @@ Neon Claw/                              # Project root
 | 2026-10-18 | Implemented NemoClaw Core: Dual-Tier Vaults (shared + personal), Hermes Agent loop, Nebius Nemotron client, Obscura stealth browser, Telegram whitelist & natural chat, Laptop edge daemon | `neonvault/*`, `neonmem/api.py`, `neonmesh/*`, `obscura/*`, `neoncore/taskQueue.js`, `neonpulse/bot.js`, `nemoclaw-edge/*`, `docker-compose.yml`, `test_system.py` |
 | 2026-10-18 | Added Claude-Code Style Startup Banner & Unified CLI Control Plane (`nemoclaw.py`, `nemoclaw.bat`, `nemoclaw.ps1`, `banner.py`, `banner.js`) | `nemoclaw.py`, `nemoclaw.bat`, `nemoclaw.ps1`, `neon-claw/banner.py`, `neon-claw/banner.js`, `neoncore/index.js`, `neonpulse/bot.js` |
 | 2026-10-18 | Prepared for GitHub: Created root `README.md` showcase and `.gitignore` to protect `.env` secrets & SQLite databases | `README.md`, `.gitignore` |
-| 2026-10-18 | Refined GitHub positioning & README: Centered focus on the personal AI agent itself (phone control, multi-host, self-learning skills, vaults) | `README.md` |
 | 2026-10-18 | Added NVIDIA Developer API (build.nvidia.com) support: Auto-detects `nvapi-...` keys, integrates `integrate.api.nvidia.com/v1`, updated setup wizard & compose | `nebius_client.py`, `nemoclaw.py`, `docker-compose.yml`, `.env.example`, `engineering.md` |
-
+| 2026-10-22 | **NeonClaw v2.0 Architecture Approved & Phase 1 Execution**: Cleaned dead scaffolding directories (`src/`, `config/`, `data/`, `neonmesh/brain_interface/`, `neonmem/backends/`, `__pycache__/`), upgraded terminal banner with large ASCII art and dual-node visual status indicators, added `nemoclaw pair` CLI capability, updated `engineering.md` and `README.md` | `nemoclaw.py`, `neon-claw/banner.py`, `engineering.md`, `README.md` |
+| 2026-10-25 | Fixed missing `eventBus` import in `neoncore/index.js` and repaired test runner entrypoint/indentation in `test_system.py`; 100% test pass verified across dual vaults, IDOR guards, and Hermes Agent | `neoncore/index.js`, `test_system.py`, `engineering.md` |

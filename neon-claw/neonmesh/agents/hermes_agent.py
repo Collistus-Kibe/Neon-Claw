@@ -13,9 +13,11 @@ class HermesAgent(BaseAgent):
     Hermes Agent: Autonomous cognitive engine powered by NVIDIA Nemotron
     with tool-calling, self-learning skills acquisition, and cross-session memory.
     """
-    def __init__(self):
+    def __init__(self, specialization: Optional[str] = None):
         self.llm = NebiusNemotronClient()
-        self.system_prompt = (
+        self.specialization = specialization
+        
+        base_prompt = (
             "You are NemoClaw, an always-on, private personal AI assistant running "
             "on an autonomous home server mesh with laptop offloading. "
             "You are powered by NVIDIA Nemotron and Hermes Agent reasoning. "
@@ -24,6 +26,16 @@ class HermesAgent(BaseAgent):
             "Be direct, insightful, proactive, and concise. "
             "When asked to browse or inspect websites, always utilize your Obscura browser tool."
         )
+        if specialization == "research":
+            base_prompt += "\nSpecialist Focus: Deep research, web content extraction, fact-checking, and structured synthesis."
+        elif specialization == "code":
+            base_prompt += "\nSpecialist Focus: Software engineering, script generation, debugging, and secure architecture."
+        elif specialization == "write":
+            base_prompt += "\nSpecialist Focus: Clear, compelling, well-structured drafting, emails, and executive summaries."
+        elif specialization == "analyze":
+            base_prompt += "\nSpecialist Focus: Data interpretation, pattern discovery, and structured breakdown."
+
+        self.system_prompt = base_prompt
 
     async def run_cycle(self, prompt: str, user_id: str = "default_user", context: Optional[str] = None) -> Dict[str, Any]:
         # 1. Fetch relevant memory context from Shared Vault

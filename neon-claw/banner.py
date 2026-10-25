@@ -1,11 +1,13 @@
 """
-NemoClaw Claude-Code Style Terminal Banner
-Provides clean, modern, high-aesthetic startup visuals with live subsystem indicators.
+NeonClaw Claude-Code Style Terminal Banner v2.0
+Provides clean, modern, high-aesthetic startup visuals with ASCII art and live dual-node subsystem indicators.
 Automatically enables ANSI colors & UTF-8 on Windows cmd.exe and PowerShell.
 """
 
 import os
 import sys
+import re
+import unicodedata
 
 # Enable Virtual Terminal Processing (ANSI colors) on Windows 10/11
 if os.name == 'nt':
@@ -21,13 +23,40 @@ if os.name == 'nt':
         pass
     os.system('')  # Standard fallback to activate VT100 in cmd.exe
 
-def get_banner(node_role: str = "Home Server", tailscale_ip: str = "100.64.0.1") -> str:
-    if hasattr(sys.stdout, 'reconfigure'):
-        try:
-            sys.stdout.reconfigure(encoding='utf-8')
-        except Exception:
-            pass
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
+ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
+def strip_ansi(s: str) -> str:
+    return ANSI_ESCAPE.sub('', s)
+
+def get_char_width(ch: str) -> int:
+    code = ord(ch)
+    if code in (0x200B, 0x200C, 0x200D, 0xFEFF):
+        return 0
+    if (0x1F300 <= code <= 0x1FAFF) or (0x2600 <= code <= 0x27BF) or (0x2300 <= code <= 0x23FF):
+        if ch in ('✦', '│', '─', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '╭', '╮', '╯', '╰', '═', '║', '╔', '╗', '╚', '╝', '◄', '►', '•', '●', '○'):
+            return 1
+        return 2
+    ea = unicodedata.east_asian_width(ch)
+    if ea in ('W', 'F'):
+        return 2
+    return 1
+
+def str_width(s: str) -> int:
+    plain = strip_ansi(s)
+    return sum(get_char_width(c) for c in plain)
+
+def get_banner(
+    node_role: str = "Home Server Control Plane",
+    tailscale_ip: str = "100.64.0.1",
+    server_online: bool = True,
+    laptop_online: bool = True
+) -> str:
     # ANSI Colors
     RESET = "\033[0m"
     BOLD = "\033[1m"
@@ -41,82 +70,99 @@ def get_banner(node_role: str = "Home Server", tailscale_ip: str = "100.64.0.1")
     YELLOW = "\033[33m"
     GRAY = "\033[90m"
 
-    WIDTH = 70  # Inner box content width
+    WIDTH = 74
+    BORDER = BRIGHT_PURPLE
 
-    def row(text: str, visual_len: int) -> str:
-        pad = max(0, WIDTH - visual_len)
-        return f"{BRIGHT_PURPLE}│{RESET}  {text}{' ' * pad}{BRIGHT_PURPLE}│{RESET}"
+    def box_row(text: str) -> str:
+        w = str_width(text)
+        pad = max(0, WIDTH - w)
+        return f"  {BORDER}║{RESET}{text}{' ' * pad}{BORDER}║{RESET}"
 
-    border_top = f"{BRIGHT_PURPLE}╭{'─' * (WIDTH + 2)}╮{RESET}"
-    border_bottom = f"{BRIGHT_PURPLE}╰{'─' * (WIDTH + 2)}╯{RESET}"
-    empty_row = f"{BRIGHT_PURPLE}│{' ' * (WIDTH + 2)}│{RESET}"
+    top = f"  {BORDER}╔{'═' * WIDTH}╗{RESET}"
+    bot = f"  {BORDER}╚{'═' * WIDTH}╝{RESET}"
+    empty = f"  {BORDER}║{' ' * WIDTH}║{RESET}"
 
-    # Header
-    title = f"{BOLD}{BRIGHT_CYAN}✦  N E M O C L A W{RESET}  {DIM}v1.0.0{RESET}"
-    title_len = 18 + 8  # "✦  N E M O C L A W  v1.0.0" -> 26 visible chars
+    ascii_art = [
+        f"  {BRIGHT_CYAN}███╗   ██╗███████╗ ██████╗ ███╗   ██╗ ██████╗██╗      █████╗ ██╗    ██╗{RESET}",
+        f"  {BRIGHT_CYAN}████╗  ██║██╔════╝██╔═══██╗████╗  ██║██╔════╝██║     ██╔══██╗██║    ██║{RESET}",
+        f"  {CYAN}██╔██╗ ██║█████╗  ██║   ██║██╔██╗ ██║██║     ██║     ███████║██║ █╗ ██║{RESET}",
+        f"  {PURPLE}██║╚██╗██║██╔══╝  ██║   ██║██║╚██╗██║██║     ██║     ██╔══██║██║███╗██║{RESET}",
+        f"  {BRIGHT_PURPLE}██║ ╚████║███████╗╚██████╔╝██║ ╚████║╚██████╗███████╗██║  ██║╚███╔███╔╝{RESET}",
+        f"  {BRIGHT_PURPLE}╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ {RESET}",
+    ]
 
-    sub = f"{DIM}Personal AI Agent • Phone Control • Cloud / Server / Laptop{RESET}"
-    sub_len = 59
+    sub_bar = (
+        f"  {GRAY}{'─' * WIDTH}{RESET}\n"
+        f"  {DIM} v2.0.0  │  Open-Source Personal AI  │  Dual-Node: Laptop ⇄ Server{RESET}\n"
+        f"  {GRAY}{'─' * WIDTH}{RESET}"
+    )
 
-    # Metadata rows: label (16 chars) + value
-    def item(label: str, val_colored: str, val_plain: str) -> str:
-        plain_len = 16 + len(val_plain)
-        return row(f"{GRAY}{label:<16}{RESET}{val_colored}", plain_len)
-
+    # Dynamic model detection
     nv_key = os.getenv("NVIDIA_API_KEY", "")
     neb_key = os.getenv("NEBIUS_API_KEY", "")
-    
+
     if nv_key.startswith("nvapi-") or (nv_key and nv_key != "your_nvidia_api_key_here"):
-        brain_name = os.getenv("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
-        infer_name = "NVIDIA Developer API (build.nvidia.com)"
+        brain_val = f"{BOLD}NVIDIA Nemotron 70B (build.nvidia.com){RESET}"
     elif neb_key and neb_key != "your_nebius_api_key_here":
-        brain_name = os.getenv("NEBIUS_MODEL", "nvidia/Llama-3.1-Nemotron-70B-Instruct")
-        infer_name = "Nebius Serverless / Token Factory"
+        brain_val = f"{BOLD}NVIDIA Nemotron 70B (Nebius Serverless){RESET}"
     else:
-        brain_name = "NVIDIA Nemotron 70B (Dual-Provider)"
-        infer_name = "NVIDIA NIM / build.nvidia.com (or Offline Fallback)"
+        brain_val = f"{GRAY}NVIDIA Nemotron 70B (Offline Fallback Reasoner){RESET}"
 
-    r_brain = item("Brain Model", f"{BOLD}{brain_name}{RESET}", brain_name)
-    r_infer = item("Inference", f"{CYAN}{infer_name}{RESET}", infer_name)
-    r_cog = item("Cognitive Core", f"{YELLOW}Hermes Agent (Nous Research Skills Engine){RESET}", "Hermes Agent (Nous Research Skills Engine)")
-    r_sand = item("Sandboxing", f"{PURPLE}NVIDIA OpenShell (Landlock + Seccomp BPF){RESET}", "NVIDIA OpenShell (Landlock + Seccomp BPF)")
-    r_web = item("Web Engine", f"{BRIGHT_CYAN}Obscura Stealth Headless Browser (Playwright){RESET}", "Obscura Stealth Headless Browser (Playwright)")
-    r_tier = item("Storage Tier", f"{GREEN}Dual Vaults: shared_vault.db + personal_vault.db{RESET}", "Dual Vaults: shared_vault.db + personal_vault.db")
-    
-    mesh_str = f"Tailscale Encrypted Peer-to-Peer ({tailscale_ip})"
-    r_mesh = item("Network Mesh", f"{CYAN}{mesh_str}{RESET}", mesh_str)
-    
-    r_node = item("Active Node", f"{BOLD}{node_role}{RESET}", node_role)
+    mesh_str = f"Tailscale Encrypted P2P ({tailscale_ip})"
 
-    # Footer status
-    status_text = f"{BRIGHT_GREEN}● SYSTEM OPERATIONAL{RESET}  {DIM}│ Talk via Telegram │ Offloading Ready{RESET}"
-    status_len = 20 + 2 + 37  # 59 visible chars
+    srv_status = f"{BRIGHT_GREEN}● ONLINE{RESET}" if server_online else f"{GRAY}○ OFFLINE{RESET}"
+    lap_status = f"{BRIGHT_GREEN}● ONLINE{RESET}" if laptop_online else f"{GRAY}○ OFFLINE{RESET}"
+
+    node_row1 = "      ┌────────────────────┐          ┌────────────────────┐"
+    node_row2 = "      │ 🏠 SERVER NODE     │◄════════►│ 💻 LAPTOP NODE     │"
+    node_row3 = f"      │   {srv_status}         │  Tunnel  │   {lap_status}         │"
+    node_row4 = "      │   8 services       │          │   Edge daemon      │"
+    node_row5 = "      └────────────────────┘          └────────────────────┘"
+
+    status_line = f"   {BRIGHT_GREEN}● SYSTEM OPERATIONAL{RESET}  {DIM}│ Talk via Telegram │ Dual-Node Ready{RESET}"
 
     lines = [
         "",
-        f"  {border_top}",
-        f"  {empty_row}",
-        f"  {row(title, title_len)}",
-        f"  {row(sub, sub_len)}",
-        f"  {empty_row}",
-        f"  {r_brain}",
-        f"  {r_infer}",
-        f"  {r_cog}",
-        f"  {r_sand}",
-        f"  {r_web}",
-        f"  {r_tier}",
-        f"  {r_mesh}",
-        f"  {r_node}",
-        f"  {empty_row}",
-        f"  {row(status_text, status_len)}",
-        f"  {border_bottom}",
+        *ascii_art,
+        sub_bar,
+        "",
+        top,
+        empty,
+        box_row(f"   🧠  {GRAY}Brain Engine{RESET}      {brain_val}"),
+        box_row(f"   ⚡  {GRAY}Cognitive Core{RESET}    {YELLOW}Hermes Agent (Multi-Step Tool Calling){RESET}"),
+        box_row(f"   🌐  {GRAY}Web Engine{RESET}        {BRIGHT_CYAN}Obscura Stealth Browser (Playwright){RESET}"),
+        box_row(f"   💾  {GRAY}Storage Tier{RESET}      {GREEN}Dual Vaults: shared_vault.db + personal_vault.db{RESET}"),
+        box_row(f"   🔗  {GRAY}Mesh Tunnel{RESET}       {CYAN}{mesh_str}{RESET}"),
+        box_row(f"   📱  {GRAY}Interface{RESET}         {PURPLE}Telegram Natural Language + Voice{RESET}"),
+        box_row(f"   🔒  {GRAY}Security{RESET}          {BRIGHT_GREEN}HMAC Auth + User Whitelist + IDOR Protection{RESET}"),
+        box_row(f"   💻  {GRAY}Active Node{RESET}       {BOLD}{node_role}{RESET}"),
+        empty,
+        box_row(node_row1),
+        box_row(node_row2),
+        box_row(node_row3),
+        box_row(node_row4),
+        box_row(node_row5),
+        empty,
+        box_row(status_line),
+        empty,
+        bot,
+        f"  {GRAY}📋 Commands:{RESET}  {BOLD}setup{RESET} │ {BOLD}up{RESET} │ {BOLD}down{RESET} │ {BOLD}test{RESET} │ {BOLD}pair{RESET} │ {BOLD}status{RESET} │ {BOLD}edge{RESET}",
         ""
     ]
 
     return "\n".join(lines)
 
-def print_banner(node_role: str = "Home Server", tailscale_ip: str = "100.64.0.1"):
-    print(get_banner(node_role, tailscale_ip))
+def print_banner(
+    node_role: str = "Home Server Control Plane",
+    tailscale_ip: str = "100.64.0.1",
+    server_online: bool = True,
+    laptop_online: bool = True
+):
+    try:
+        print(get_banner(node_role, tailscale_ip, server_online, laptop_online))
+    except UnicodeEncodeError:
+        # Fallback for ultra-restrictive terminals
+        print(f"\n✦ NEONCLAW v2.0.0 │ {node_role} │ {tailscale_ip}\n")
 
 if __name__ == "__main__":
     print_banner()
