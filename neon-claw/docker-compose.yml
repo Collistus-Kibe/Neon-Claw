@@ -88,7 +88,7 @@ services:
   neonvault:
     build: ./neonvault
     ports:
-      - "127.0.0.1:8003:8003"
+      - "8003:8003"
     volumes:
       - vault-data:/data
     restart: unless-stopped
