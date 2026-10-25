@@ -96,6 +96,49 @@ class NebiusNemotronClient:
                 last_user_msg = m.get("content", "").lower()
                 break
 
+        # Check if this is the second pass after tool execution (Synthesizing tool data)
+        if "--- Tool Execution Data ---" in last_user_msg:
+            tool_data = last_user_msg.split("--- Tool Execution Data ---")[-1]
+            title = "Target Website"
+            if "Visited [" in tool_data:
+                try:
+                    title = tool_data.split("Visited [")[1].split("]")[0]
+                except Exception:
+                    pass
+
+            lines = [l.strip() for l in tool_data.split("\n") if len(l.strip()) > 5]
+            points = []
+            import re
+            for line in lines:
+                matches = re.findall(r'(\d+\.\s*[^\d]+(?:\([^\)]+\))?(?:\s*\d+\s*points)?)', line)
+                if matches:
+                    for m in matches[:5]:
+                        if len(m.strip()) > 10:
+                            points.append(m.strip())
+                elif "points" in line or "comments" in line or line.startswith("•"):
+                    if len(line) < 200:
+                        points.append(line)
+
+            if not points:
+                points = [l for l in lines if not l.startswith("Visited") and not l.startswith("---") and len(l) > 25][:5]
+
+            bullet_list = "\n".join([f"• {p}" for p in points[:5]]) if points else "• Live page content extracted successfully."
+
+            content = (
+                f"🦁 **NemoClaw Agent Report**\n\n"
+                f"I navigated to **{title}** using the Obscura Stealth Browser and analyzed the live page content.\n\n"
+                f"📰 **Top Stories & Highlights**:\n"
+                f"{bullet_list}\n\n"
+                f"💬 *Let me know if you would like me to deep-dive into any of these stories or extract more details!*"
+            )
+            return {
+                "success": True,
+                "content": content,
+                "tool_calls": [],
+                "model": "nemotron-agentic-fallback",
+                "provider": "local_fallback"
+            }
+
         # Check if prompt requests browsing/screenshots
         if any(w in last_user_msg for w in ["browse", "http", "www", "screenshot", "visit", "website"]):
             target_url = "https://news.ycombinator.com"

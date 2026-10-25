@@ -64,7 +64,10 @@ async def navigate(req: NavigateRequest):
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
             )
             page = await context.new_page()
-            await stealth_async(page)
+            try:
+                await stealth_async(page)
+            except Exception as stealth_err:
+                print(f"[Obscura] Stealth helper notice: {stealth_err}")
             
             await page.goto(url, timeout=req.timeout_ms, wait_until="domcontentloaded")
             await page.wait_for_timeout(1000)
@@ -76,7 +79,7 @@ async def navigate(req: NavigateRequest):
             soup = BeautifulSoup(content, "html.parser")
             for tag in soup(["script", "style", "noscript", "svg"]):
                 tag.decompose()
-            text_preview = " ".join(soup.get_text().split())[:1500]
+            text_preview = " ".join(soup.get_text().split())[:4000]
 
             screenshot_b64 = None
             if req.take_screenshot:

@@ -1,5 +1,5 @@
 function formatResponse(text) {
-    return `[Agent Response]\n${text}`;
+    return text.trim();
 }
 
 module.exports = { formatResponse };

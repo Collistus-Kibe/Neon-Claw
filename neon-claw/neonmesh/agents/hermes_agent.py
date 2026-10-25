@@ -132,16 +132,35 @@ class HermesAgent(BaseAgent):
             elif func_name == "offload_to_laptop":
                 tool_results.append(f"Task offloaded to workstation laptop node: {args.get('command')}")
 
-        # Combine text response
-        final_text = llm_resp.get("content", "")
+        # 5. Multi-Step Agentic Reasoning: Feed tool observations back to the reasoner
         if tool_results:
-            final_text += "\n\n" + "\n".join([f"⚡ {r}" for r in tool_results])
+            messages.append({
+                "role": "assistant",
+                "content": llm_resp.get("content") or "Navigating and gathering live data with system tools..."
+            })
+            tool_context = "\n\n".join(tool_results)
+            messages.append({
+                "role": "user",
+                "content": (
+                    f"--- Tool Execution Data ---\n{tool_context}\n\n"
+                    f"Based on the live data gathered above, please synthesize a complete, insightful, "
+                    f"and structured answer to my original request: '{prompt}'."
+                )
+            })
+            second_resp = await self.llm.chat_completion(messages=messages, tools=None)
+            final_text = second_resp.get("content") or ("\n\n".join([f"⚡ {r}" for r in tool_results]))
+            model_used = second_resp.get("model", llm_resp.get("model", "nvidia-nemotron"))
+            provider_used = second_resp.get("provider", llm_resp.get("provider", "nebius"))
+        else:
+            final_text = llm_resp.get("content", "")
+            model_used = llm_resp.get("model", "nvidia-nemotron")
+            provider_used = llm_resp.get("provider", "nebius")
 
         return {
             "result": final_text,
             "media": media_attachments,
-            "model": llm_resp.get("model", "nvidia-nemotron"),
-            "provider": llm_resp.get("provider", "nebius")
+            "model": model_used,
+            "provider": provider_used
         }
 
     def process(self, prompt: str) -> str:
@@ -185,9 +204,9 @@ class HermesAgent(BaseAgent):
                 if resp.status_code == 200:
                     data = resp.json()
                     title = data.get("title", "")
-                    content_preview = data.get("text_preview", "")[:300]
+                    content_preview = data.get("text_preview", "")[:3000]
                     return {
-                        "summary": f"**Visited**: [{title}]({url})\n{content_preview}...",
+                        "summary": f"**Visited**: [{title}]({url})\n\n{content_preview}",
                         "screenshot_base64": data.get("screenshot_base64")
                     }
         except Exception as e:
