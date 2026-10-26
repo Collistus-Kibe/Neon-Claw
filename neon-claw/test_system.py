@@ -132,9 +132,62 @@ async def test_hermes_reasoner():
     print("✅ Hermes Agent cognitive loop completed successfully.")
     print(f"   Response Preview: {cycle_res['result'][:120]}...")
 
+async def test_email_triage():
+    print("\n--- 3. Testing Autonomous Email Triage & Urgency Classification ---")
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.join(BASE_DIR, "neonmesh"))
+    from email_service import EmailTriageEngine
+    from neonmesh.agents.hermes_agent import HermesAgent
+
+    engine = EmailTriageEngine()
+
+    # Test 3.1: Urgency Classifier - Critical Outage
+    c1 = engine.classify_urgency(
+        subject="CRITICAL: Production server down and database outage",
+        sender="alert@ops.com",
+        snippet="Immediate action needed, cluster is not responding."
+    )
+    assert c1["urgency"] == "URGENT", f"Expected URGENT, got {c1['urgency']}"
+    assert c1["badge"] == "🚨"
+    print(f"✅ Classified critical outage email as {c1['badge']} {c1['urgency']} ({c1['reason']})")
+
+    # Test 3.2: Urgency Classifier - High Priority
+    c2 = engine.classify_urgency(
+        subject="Contract review requested before 5 PM",
+        sender="legal@firm.com",
+        snippet="Please review and provide approval needed today."
+    )
+    assert c2["urgency"] in ["URGENT", "HIGH"]
+    print(f"✅ Classified contract deadline email as {c2['badge']} {c2['urgency']}")
+
+    # Test 3.3: Urgency Classifier - Low Priority / Newsletter
+    c3 = engine.classify_urgency(
+        subject="Weekly Engineering Newsletter & Promotions Digest",
+        sender="news@digest.org",
+        snippet="Here are this week's top software frameworks and discounts."
+    )
+    assert c3["urgency"] == "LOW"
+    assert c3["badge"] == "💤"
+    print(f"✅ Classified promotional digest as {c3['badge']} {c3['urgency']}")
+
+    # Test 3.4: Inbox Triage Scan & Action Items
+    triage_result = engine.triage_inbox(limit=5)
+    assert triage_result["total_scanned"] > 0
+    assert "urgent_count" in triage_result
+    assert len(triage_result["action_items"]) > 0
+    print(f"✅ Triage scan identified {triage_result['urgent_count']} urgent emails and {len(triage_result['action_items'])} action items.")
+
+    # Test 3.5: Hermes Agent Autonomous Email Triage Loop
+    hermes = HermesAgent()
+    resp = await hermes.run_cycle("Triage my inbox and alert me to anything urgent")
+    assert "result" in resp
+    assert "Inbox Triage Report" in resp["result"] or "URGENT" in resp["result"] or "CRITICAL" in resp["result"]
+    print("✅ Hermes Agent autonomous email triage cycle passed with structured executive report.")
+
 async def main():
     await test_dual_vault()
     await test_hermes_reasoner()
+    await test_email_triage()
     print("\n🎉 ALL TESTS PASSED! NEONCLAW IS FULLY OPERATIONAL.\n")
 
 if __name__ == "__main__":

@@ -117,19 +117,54 @@ class NebiusNemotronClient:
         messages: List[Dict[str, str]], 
         tools: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        last_user_msg = ""
+        raw_user_msg = ""
         for m in reversed(messages):
             if m.get("role") == "user":
-                last_user_msg = m.get("content", "").lower()
+                raw_user_msg = m.get("content", "")
                 break
+        last_user_msg = raw_user_msg.lower()
 
         # Check if this is the second pass after tool execution (Synthesizing tool data)
-        if "--- Tool Execution Data ---" in last_user_msg:
-            tool_data = last_user_msg.split("--- Tool Execution Data ---")[-1]
+        if "--- tool execution data ---" in last_user_msg or "--- Tool Execution Data ---" in raw_user_msg:
+            if "--- Tool Execution Data ---" in raw_user_msg:
+                tool_data = raw_user_msg.split("--- Tool Execution Data ---")[-1].strip()
+            else:
+                tool_data = raw_user_msg.split("--- tool execution data ---")[-1].strip()
+
+            # Email Triage Report or email list synthesis
+            if "inbox triage report" in tool_data.lower() or "urgent items" in tool_data.lower() or ("found" in tool_data.lower() and "emails:" in tool_data.lower()):
+                content = (
+                    f"🦁 **NemoClaw Executive Email Triage**\n\n"
+                    f"{tool_data}\n\n"
+                    f"💡 *Autonomous Options*: Would you like me to draft immediate replies to any urgent items, or take remediation actions?"
+                )
+                return {
+                    "success": True,
+                    "content": content,
+                    "tool_calls": [],
+                    "model": "nemotron-agentic-fallback",
+                    "provider": "local_fallback"
+                }
+
+            # Email dispatch or draft confirmation
+            if "email sent successfully" in tool_data.lower() or "drafted reply" in tool_data.lower():
+                content = (
+                    f"🦁 **NemoClaw Email Dispatcher**\n\n"
+                    f"{tool_data}\n\n"
+                    f"✅ Operation completed."
+                )
+                return {
+                    "success": True,
+                    "content": content,
+                    "tool_calls": [],
+                    "model": "nemotron-agentic-fallback",
+                    "provider": "local_fallback"
+                }
+
             title = "Target Website"
-            if "Visited [" in tool_data:
+            if "visited [" in tool_data.lower():
                 try:
-                    title = tool_data.split("Visited [")[1].split("]")[0]
+                    title = re.search(r'visited \[([^\]]+)\]', tool_data, re.IGNORECASE).group(1)
                 except Exception:
                     pass
 
@@ -213,19 +248,73 @@ class NebiusNemotronClient:
                     "provider": "local_fallback"
                 }
 
-        # 3. Check for web research / news / browsing / crypto requests
-        browse_keywords = [
-            "browse", "http", "www", "screenshot", "visit", "website",
-            "news", "crypto", "bitcoin", "ethereum", "price", "market",
-            "weather", "search", "lookup", "find", "latest", "check on", "headlines", "stories"
-        ]
-        
-        # Check current message OR if user said "process the request" / "do it", inspect conversation history!
+        # Build combined context from current message and recent history
         combined_text = last_user_msg
         if any(w in last_user_msg for w in ["process", "continue", "do it", "go ahead", "proceed"]):
             for m in messages:
                 if m.get("role") in ["user", "assistant"]:
                     combined_text += " " + m.get("content", "").lower()
+
+        # 3. Check for Email Triage & Autonomous Dispatch requests
+        email_keywords = [
+            "email", "emails", "inbox", "triage", "urgent mail", "urgent email",
+            "check email", "check my email", "check inbox", "manage email", "unread email"
+        ]
+        if any(w in combined_text for w in email_keywords):
+            # Dispatch / Send Email request
+            if any(w in combined_text for w in ["send email", "send an email", "send mail", "compose email", "forward email"]):
+                recipient = "user@example.com"
+                words = last_user_msg.split()
+                for i, w in enumerate(words):
+                    if "@" in w:
+                        recipient = w.strip("<>,.;:'\"")
+                        break
+                    elif w in ["to", "for"] and i + 1 < len(words) and "@" in words[i+1]:
+                        recipient = words[i+1].strip("<>,.;:'\"")
+                        break
+
+                return {
+                    "success": True,
+                    "content": f"Dispatching email to {recipient} via SMTP...",
+                    "tool_calls": [{
+                        "id": "call_send_email_01",
+                        "type": "function",
+                        "function": {
+                            "name": "send_email",
+                            "arguments": json.dumps({
+                                "to_address": recipient,
+                                "subject": "Update from NemoClaw",
+                                "body": "This is an automated dispatch from NemoClaw Personal Assistant."
+                            })
+                        }
+                    }],
+                    "model": "nemotron-offline-fallback",
+                    "provider": "local_fallback"
+                }
+
+            # Inbox Triage with Urgency Classification
+            unread_only = "unread" in combined_text
+            return {
+                "success": True,
+                "content": "Scanning inbox to evaluate urgency, prioritize action items, and detect critical notifications...",
+                "tool_calls": [{
+                    "id": "call_triage_inbox_01",
+                    "type": "function",
+                    "function": {
+                        "name": "triage_inbox",
+                        "arguments": json.dumps({"limit": 10, "unread_only": unread_only})
+                    }
+                }],
+                "model": "nemotron-offline-fallback",
+                "provider": "local_fallback"
+            }
+
+        # 4. Check for web research / news / browsing / crypto requests
+        browse_keywords = [
+            "browse", "http", "www", "screenshot", "visit", "website",
+            "news", "crypto", "bitcoin", "ethereum", "price", "market",
+            "weather", "search", "lookup", "find", "latest", "check on", "headlines", "stories"
+        ]
 
         if any(w in combined_text for w in browse_keywords):
             target_url = "https://news.ycombinator.com"

@@ -5,25 +5,37 @@ from typing import Dict, Any, List, Optional
 from nebius_client import NebiusNemotronClient
 from .base_agent import BaseAgent
 
+try:
+    from email_service import EmailTriageEngine
+except ImportError:
+    try:
+        from neonmesh.email_service import EmailTriageEngine
+    except ImportError:
+        from ..email_service import EmailTriageEngine
+
 OBSCURA_URL = os.getenv("OBSCURA_URL", "http://obscura:8004")
 NEONMEM_URL = os.getenv("NEONMEM_URL", "http://neonmem:8002")
 
 class HermesAgent(BaseAgent):
     """
     Hermes Agent: Autonomous cognitive engine powered by NVIDIA Nemotron
-    with tool-calling, self-learning skills acquisition, and cross-session memory.
+    with tool-calling, self-learning skills acquisition, cross-session memory,
+    and autonomous executive email management & urgency triage.
     """
     def __init__(self, specialization: Optional[str] = None):
         self.llm = NebiusNemotronClient()
         self.specialization = specialization
+        self.email_engine = EmailTriageEngine()
         
         base_prompt = (
             "You are NemoClaw, an always-on, private personal AI assistant running "
             "on an autonomous home server mesh with laptop offloading. "
             "You are powered by NVIDIA Nemotron and Hermes Agent reasoning. "
             "You have access to persistent memory vaults (Shared & Personal), "
-            "the Obscura headless stealth browser, and distributed execution tools. "
+            "the Obscura headless stealth browser, an intelligent Email Management & Triage Engine, "
+            "and distributed execution tools. "
             "Be direct, insightful, proactive, and concise. "
+            "When asked to manage, triage, or inspect emails, identify what is URGENT (critical alerts, downtime, immediate deadlines, fraud) vs NOT URGENT, and present clear action items. "
             "When asked to browse or inspect websites, always utilize your Obscura browser tool."
         )
         if specialization == "research":
@@ -101,6 +113,67 @@ class HermesAgent(BaseAgent):
                         "required": ["command"]
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "triage_inbox",
+                    "description": "Triage emails with intelligent urgency classification (URGENT 🚨, HIGH ⚠️, NORMAL ℹ️, LOW/SPAM 💤), prioritize action items, and detect server outages, security issues, and deadlines.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {"type": "integer", "description": "Number of emails to scan", "default": 10},
+                            "unread_only": {"type": "boolean", "description": "Whether to only scan unread emails", "default": False}
+                        }
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "check_emails",
+                    "description": "Fetch recent emails with sender, subject, date, urgency rating, and content snippets.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {"type": "integer", "description": "Number of emails to fetch", "default": 5},
+                            "unread_only": {"type": "boolean", "description": "Only unread emails", "default": True}
+                        }
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "send_email",
+                    "description": "Send an email to a recipient via SMTP (or sandbox simulated dispatch if not configured).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "to_address": {"type": "string", "description": "Recipient email address"},
+                            "subject": {"type": "string", "description": "Email subject line"},
+                            "body": {"type": "string", "description": "Email body content"}
+                        },
+                        "required": ["to_address", "subject", "body"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "draft_email_reply",
+                    "description": "Draft an autonomous, context-aware reply to an email thread.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "to_address": {"type": "string", "description": "Recipient email address"},
+                            "subject": {"type": "string", "description": "Original subject to reply to"},
+                            "context": {"type": "string", "description": "Core message or instruction for the response"},
+                            "tone": {"type": "string", "enum": ["professional", "concise", "formal"], "default": "professional"}
+                        },
+                        "required": ["to_address", "subject", "context"]
+                    }
+                }
             }
         ]
 
@@ -136,6 +209,46 @@ class HermesAgent(BaseAgent):
 
             elif func_name == "offload_to_laptop":
                 tool_results.append(f"Task offloaded to workstation laptop node: {args.get('command')}")
+
+            elif func_name == "triage_inbox":
+                triage_res = self.email_engine.triage_inbox(
+                    limit=args.get("limit", 10),
+                    unread_only=args.get("unread_only", False)
+                )
+                tool_results.append(triage_res.get("report", "Triage completed."))
+
+            elif func_name == "check_emails":
+                emails = self.email_engine.fetch_emails(
+                    limit=args.get("limit", 5),
+                    unread_only=args.get("unread_only", True)
+                )
+                if not emails:
+                    tool_results.append("No emails found matching criteria.")
+                else:
+                    lines = [f"Found {len(emails)} emails:"]
+                    for e in emails:
+                        lines.append(f"{e.get('badge')} [{e.get('urgency')}] {e.get('subject')} from {e.get('sender')} ({e.get('date')}): {e.get('snippet')}")
+                    tool_results.append("\n".join(lines))
+
+            elif func_name == "send_email":
+                send_res = self.email_engine.send_email(
+                    to_address=args.get("to_address", ""),
+                    subject=args.get("subject", ""),
+                    body=args.get("body", "")
+                )
+                if send_res.get("success"):
+                    tool_results.append(f"Email sent successfully to {args.get('to_address')} ({send_res.get('mode', 'live')}).")
+                else:
+                    tool_results.append(f"Failed to send email to {args.get('to_address')}: {send_res.get('error')}")
+
+            elif func_name == "draft_email_reply":
+                draft_res = self.email_engine.draft_reply(
+                    to_address=args.get("to_address", ""),
+                    subject=args.get("subject", ""),
+                    context=args.get("context", ""),
+                    tone=args.get("tone", "professional")
+                )
+                tool_results.append(f"Drafted reply to {args.get('to_address')} with subject '{draft_res.get('subject')}':\n\n{draft_res.get('draft_body')}")
 
         # 5. Multi-Step Agentic Reasoning: Feed tool observations back to the reasoner
         if tool_results:

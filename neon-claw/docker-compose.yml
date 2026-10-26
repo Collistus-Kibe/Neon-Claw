@@ -40,6 +40,12 @@ services:
       - NEBIUS_BASE_URL=${NEBIUS_BASE_URL:-https://api.studio.nebius.ai/v1/}
       - NEBIUS_API_KEY=${NEBIUS_API_KEY:-}
       - NEBIUS_MODEL=${NEBIUS_MODEL:-nvidia/Llama-3.1-Nemotron-70B-Instruct}
+      - EMAIL_HOST=${EMAIL_HOST:-imap.gmail.com}
+      - EMAIL_PORT=${EMAIL_PORT:-993}
+      - EMAIL_USER=${EMAIL_USER:-}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
+      - EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST:-smtp.gmail.com}
+      - EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT:-587}
     ports:
       - "127.0.0.1:8001:8001"
     depends_on:
