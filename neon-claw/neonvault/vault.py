@@ -16,12 +16,18 @@ from contextlib import asynccontextmanager
 import aiosqlite
 import json
 import os
+import re
 
 DATA_DIR = os.getenv("VAULT_DATA_DIR", "/data")
 SHARED_DB = os.path.join(DATA_DIR, "shared_vault.db")
 PERSONAL_DB = os.path.join(DATA_DIR, "personal_vault.db")
 
 # Pydantic Schemas
+class ConversationHistoryIn(BaseModel):
+    user_id: str
+    role: str
+    content: str
+
 class SharedMemoryIn(BaseModel):
     content: str
     user_id: str
@@ -93,21 +99,71 @@ async def add_memory(mem: SharedMemoryIn):
 async def get_memories(user_id: str, query: Optional[str] = None, category: Optional[str] = None):
     async with aiosqlite.connect(SHARED_DB) as db:
         db.row_factory = aiosqlite.Row
-        sql = "SELECT * FROM shared_memories WHERE user_id = ?"
-        params: List[Any] = [user_id]
         
         if category:
-            sql += " AND category = ?"
-            params.append(category)
+            cursor = await db.execute(
+                "SELECT * FROM shared_memories WHERE user_id = ? AND category = ? ORDER BY id DESC LIMIT 50",
+                (user_id, category)
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
 
         if query and query != "all":
-            sql += " AND content LIKE ?"
-            params.append(f"%{query}%")
-            
-        sql += " ORDER BY id DESC LIMIT 50"
-        cursor = await db.execute(sql, tuple(params))
+            # 1. Exact or keyword matching
+            stop_words = {"the", "a", "an", "is", "in", "it", "to", "for", "of", "and", "or", "on", "what", "how", "check", "about", "my", "me", "you", "tell", "please", "todays", "today", "news"}
+            words = [w.strip() for w in re.findall(r'\b\w+\b', query.lower()) if len(w) > 2 and w not in stop_words]
+            if words:
+                clauses = " OR ".join(["content LIKE ?" for _ in words])
+                params = [user_id] + [f"%{w}%" for w in words]
+                cursor = await db.execute(
+                    f"SELECT * FROM shared_memories WHERE user_id = ? AND ({clauses}) ORDER BY id DESC LIMIT 10",
+                    tuple(params)
+                )
+                rows = await cursor.fetchall()
+                if rows:
+                    return [dict(row) for row in rows]
+            else:
+                cursor = await db.execute(
+                    "SELECT * FROM shared_memories WHERE user_id = ? AND content LIKE ? ORDER BY id DESC LIMIT 10",
+                    (user_id, f"%{query}%")
+                )
+                rows = await cursor.fetchall()
+                if rows:
+                    return [dict(row) for row in rows]
+
+        # Fallback: Return the 5 most recent stored memories so agent always remembers user profile/setup
+        cursor = await db.execute(
+            "SELECT * FROM shared_memories WHERE user_id = ? ORDER BY id DESC LIMIT 5",
+            (user_id,)
+        )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+# ==============================================================================
+# CONVERSATION HISTORY (Multi-Turn Short-Term Memory)
+# ==============================================================================
+
+@app.post("/history")
+async def add_history_message(msg: ConversationHistoryIn):
+    async with aiosqlite.connect(SHARED_DB) as db:
+        await db.execute(
+            "INSERT INTO conversation_history (user_id, role, content) VALUES (?, ?, ?)",
+            (msg.user_id, msg.role, msg.content)
+        )
+        await db.commit()
+        return {"status": "saved"}
+
+@app.get("/history")
+async def get_history(user_id: str, limit: int = 6):
+    async with aiosqlite.connect(SHARED_DB) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT role, content FROM conversation_history WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+            (user_id, limit)
+        )
+        rows = await cursor.fetchall()
+        # Return in chronological order
+        return [dict(r) for r in reversed(rows)]
 
 @app.delete("/memories/{memory_id}")
 async def delete_memory(memory_id: int, user_id: str = Query(..., description="Owner User ID")):

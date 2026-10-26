@@ -39,6 +39,11 @@ class SkillRegisterRequest(BaseModel):
     parameters_schema: Dict[str, Any] = Field(default_factory=dict)
     created_by_agent: str = "hermes"
 
+class ConversationHistoryRequest(BaseModel):
+    user_id: str
+    role: str
+    content: str
+
 class ReflectRequest(BaseModel):
     trigger: str
     user_id: Optional[str] = None
@@ -113,6 +118,24 @@ async def list_skills():
         return resp.json()
     except Exception as e:
         return {"error": f"Failed to list skills: {str(e)}"}
+
+@app.post("/history")
+async def add_history(req: ConversationHistoryRequest):
+    global http_client
+    try:
+        resp = await http_client.post(f"{VAULT_URL}/history", json=req.model_dump())
+        return resp.json()
+    except Exception as e:
+        return {"error": f"Failed to record history: {str(e)}"}
+
+@app.get("/history")
+async def get_history(user_id: str, limit: int = 6):
+    global http_client
+    try:
+        resp = await http_client.get(f"{VAULT_URL}/history", params={"user_id": user_id, "limit": limit})
+        return resp.json()
+    except Exception as e:
+        return []
 
 @app.post("/reflect")
 async def reflect(req: ReflectRequest):

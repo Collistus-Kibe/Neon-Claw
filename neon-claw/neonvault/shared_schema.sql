@@ -38,3 +38,15 @@ CREATE TABLE IF NOT EXISTS task_history (
     result_summary TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Multi-Turn Conversational History Memory
+CREATE TABLE IF NOT EXISTS conversation_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL, -- 'user' or 'assistant'
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_history_user ON conversation_history(user_id);
+

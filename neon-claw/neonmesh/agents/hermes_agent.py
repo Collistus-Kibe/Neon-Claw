@@ -38,8 +38,9 @@ class HermesAgent(BaseAgent):
         self.system_prompt = base_prompt
 
     async def run_cycle(self, prompt: str, user_id: str = "default_user", context: Optional[str] = None) -> Dict[str, Any]:
-        # 1. Fetch relevant memory context from Shared Vault
+        # 1. Fetch relevant memory context & recent conversation history
         recalled_memories = await self._recall_context(prompt, user_id)
+        recent_history = await self._get_history(user_id, limit=6)
         
         messages = [
             {"role": "system", "content": self.system_prompt},
@@ -49,6 +50,10 @@ class HermesAgent(BaseAgent):
         if context:
             messages.append({"role": "system", "content": f"Session Context:\n{context}"})
             
+        # Replay recent conversation turns for multi-turn continuity
+        for h in recent_history:
+            messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+
         messages.append({"role": "user", "content": prompt})
 
         # 2. Define Hermes Tools
@@ -156,6 +161,10 @@ class HermesAgent(BaseAgent):
             model_used = llm_resp.get("model", "nvidia-nemotron")
             provider_used = llm_resp.get("provider", "nebius")
 
+        # 6. Auto-persist conversation turn to history memory
+        await self._save_history(user_id, "user", prompt)
+        await self._save_history(user_id, "assistant", final_text)
+
         return {
             "result": final_text,
             "media": media_attachments,
@@ -171,6 +180,28 @@ class HermesAgent(BaseAgent):
             import nest_asyncio
             nest_asyncio.apply()
         return loop.run_until_complete(self.run_cycle(prompt))["result"]
+
+    async def _get_history(self, user_id: str, limit: int = 6) -> List[Dict[str, str]]:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(f"{NEONMEM_URL}/history", params={"user_id": user_id, "limit": limit})
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, list):
+                        return data
+        except Exception:
+            pass
+        return []
+
+    async def _save_history(self, user_id: str, role: str, content: str):
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                await client.post(
+                    f"{NEONMEM_URL}/history",
+                    json={"user_id": user_id, "role": role, "content": content}
+                )
+        except Exception:
+            pass
 
     async def _recall_context(self, query: str, user_id: str) -> str:
         try:

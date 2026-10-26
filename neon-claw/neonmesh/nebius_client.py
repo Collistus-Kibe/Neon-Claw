@@ -3,18 +3,33 @@ import json
 import httpx
 from typing import List, Dict, Any, Optional
 
-# Supports both NVIDIA Developer API (build.nvidia.com) and Nebius Cloud API
+# Supports multiple providers: Groq, OpenRouter, NVIDIA NIM, Nebius, and OpenAI
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # Determine active API key
-ACTIVE_API_KEY = NVIDIA_API_KEY or NEBIUS_API_KEY
+ACTIVE_API_KEY = GROQ_API_KEY or OPENROUTER_API_KEY or NVIDIA_API_KEY or NEBIUS_API_KEY or OPENAI_API_KEY
 
-# Determine default Base URL
-if ACTIVE_API_KEY.startswith("nvapi-") or NVIDIA_API_KEY:
+# Determine default Base URL & Model
+if GROQ_API_KEY or (ACTIVE_API_KEY and ACTIVE_API_KEY.startswith("gsk_")):
+    DEFAULT_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+    DEFAULT_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    DEFAULT_PROVIDER = "groq"
+elif OPENROUTER_API_KEY or (ACTIVE_API_KEY and ACTIVE_API_KEY.startswith("sk-or-")):
+    DEFAULT_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+    DEFAULT_PROVIDER = "openrouter"
+elif ACTIVE_API_KEY.startswith("nvapi-") or NVIDIA_API_KEY:
     DEFAULT_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
     DEFAULT_MODEL = os.getenv("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
     DEFAULT_PROVIDER = "nvidia_developer_api"
+elif OPENAI_API_KEY or (ACTIVE_API_KEY and ACTIVE_API_KEY.startswith("sk-")):
+    DEFAULT_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    DEFAULT_PROVIDER = "openai"
 else:
     DEFAULT_BASE_URL = os.getenv("NEBIUS_BASE_URL", "https://api.studio.nebius.ai/v1")
     DEFAULT_MODEL = os.getenv("NEBIUS_MODEL", "nvidia/Llama-3.1-Nemotron-70B-Instruct")
@@ -22,17 +37,29 @@ else:
 
 class NebiusNemotronClient:
     """
-    Client for NVIDIA Developer API (build.nvidia.com) & Nebius Serverless
-    powering NVIDIA Nemotron with deterministic offline fallback when no API key is provided.
+    Multi-Provider LLM Client (NVIDIA NIM, Groq, OpenRouter, Nebius, OpenAI)
+    with smart multi-turn agentic offline fallback.
     """
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or ACTIVE_API_KEY
         
         # Auto-detect endpoint based on key format
-        if self.api_key.startswith("nvapi-"):
+        if self.api_key.startswith("gsk_"):
+            self.base_url = (base_url or os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")).rstrip("/")
+            self.model = model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+            self.provider = "groq"
+        elif self.api_key.startswith("sk-or-"):
+            self.base_url = (base_url or os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")).rstrip("/")
+            self.model = model or os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+            self.provider = "openrouter"
+        elif self.api_key.startswith("nvapi-"):
             self.base_url = (base_url or os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")).rstrip("/")
             self.model = model or os.getenv("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
             self.provider = "nvidia_developer_api"
+        elif self.api_key.startswith("sk-"):
+            self.base_url = (base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")).rstrip("/")
+            self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            self.provider = "openai"
         else:
             self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
             self.model = model or DEFAULT_MODEL
@@ -139,18 +166,82 @@ class NebiusNemotronClient:
                 "provider": "local_fallback"
             }
 
-        # Check if prompt requests browsing/screenshots
-        if any(w in last_user_msg for w in ["browse", "http", "www", "screenshot", "visit", "website"]):
-            target_url = "https://news.ycombinator.com"
-            words = last_user_msg.split()
-            for word in words:
-                if word.startswith("http://") or word.startswith("https://"):
-                    target_url = word
+        # 1. Check for memory storage requests ("remember that...", "my name is...", "i like...", "save...")
+        if any(w in last_user_msg for w in ["remember", "my name is", "i prefer", "save this", "store that"]):
+            fact = last_user_msg
+            for prefix in ["remember that", "remember", "please remember", "save this:", "save"]:
+                if fact.startswith(prefix):
+                    fact = fact[len(prefix):].strip()
                     break
 
             return {
                 "success": True,
-                "content": f"Executing web navigation to {target_url} via Obscura Stealth Browser.",
+                "content": f"Got it! I am storing that in your Shared Memory Vault: '{fact}'.",
+                "tool_calls": [{
+                    "id": "call_save_mem_01",
+                    "type": "function",
+                    "function": {
+                        "name": "save_memory",
+                        "arguments": json.dumps({"content": fact, "category": "preference"})
+                    }
+                }],
+                "model": "nemotron-offline-fallback",
+                "provider": "local_fallback"
+            }
+
+        # 2. Check for memory recall requests ("what do you remember", "who am i", "my preferences")
+        if any(w in last_user_msg for w in ["what do you remember", "what are my preferences", "what do you know about me", "who am i", "my memory"]):
+            mem_text = ""
+            for m in messages:
+                if "Personal Memories Context:" in m.get("content", ""):
+                    mem_text = m.get("content", "").replace("Personal Memories Context:\n", "").strip()
+
+            if mem_text:
+                return {
+                    "success": True,
+                    "content": f"🧠 **Here is what I remember about you from your Shared Vault**:\n\n{mem_text}",
+                    "tool_calls": [],
+                    "model": "nemotron-offline-fallback",
+                    "provider": "local_fallback"
+                }
+            else:
+                return {
+                    "success": True,
+                    "content": "🧠 **Memory Vault**: I don't have any saved facts or preferences stored for your profile yet. Tell me something with *'Remember that...'* and I will store it permanently!",
+                    "tool_calls": [],
+                    "model": "nemotron-offline-fallback",
+                    "provider": "local_fallback"
+                }
+
+        # 3. Check for web research / news / browsing / crypto requests
+        browse_keywords = [
+            "browse", "http", "www", "screenshot", "visit", "website",
+            "news", "crypto", "bitcoin", "ethereum", "price", "market",
+            "weather", "search", "lookup", "find", "latest", "check on", "headlines", "stories"
+        ]
+        
+        # Check current message OR if user said "process the request" / "do it", inspect conversation history!
+        combined_text = last_user_msg
+        if any(w in last_user_msg for w in ["process", "continue", "do it", "go ahead", "proceed"]):
+            for m in messages:
+                if m.get("role") in ["user", "assistant"]:
+                    combined_text += " " + m.get("content", "").lower()
+
+        if any(w in combined_text for w in browse_keywords):
+            target_url = "https://news.ycombinator.com"
+            if "crypto" in combined_text or "bitcoin" in combined_text or "ethereum" in combined_text:
+                target_url = "https://coinmarketcap.com"
+            elif "tech" in combined_text:
+                target_url = "https://techcrunch.com"
+            else:
+                for word in combined_text.split():
+                    if word.startswith("http://") or word.startswith("https://"):
+                        target_url = word
+                        break
+
+            return {
+                "success": True,
+                "content": f"Navigating to {target_url} with Obscura Stealth Browser to gather live data...",
                 "tool_calls": [{
                     "id": "call_obscura_nav_01",
                     "type": "function",
@@ -163,7 +254,7 @@ class NebiusNemotronClient:
                 "provider": "local_fallback"
             }
 
-        # Check if asking about system status or mode
+        # 4. Check if asking about system status or mode
         if "status" in last_user_msg or "health" in last_user_msg:
             return {
                 "success": True,
@@ -180,13 +271,13 @@ class NebiusNemotronClient:
                 "provider": "local_fallback"
             }
 
-        # Standard conversational response
+        # 5. Natural conversational reply with memory awareness
         return {
             "success": True,
             "content": (
                 f"🦁 **NemoClaw Assistant**:\n\n"
-                f"I processed your query: *\"{last_user_msg.strip()}\"*\n\n"
-                "All memory vaults, skills engine, and Obscura browser are synchronized and ready to carry out tasks across your home server and laptop workflows."
+                f"I received your message: *\"{last_user_msg.strip()}\"*\n\n"
+                "I am ready to assist. You can ask me to **browse websites**, **search crypto/tech news**, **execute code on your laptop**, or **save preferences** to your personal vault."
             ),
             "tool_calls": [],
             "model": "nemotron-offline-fallback",

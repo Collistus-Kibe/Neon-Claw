@@ -79,7 +79,20 @@ async def test_dual_vault():
                 assert len(skills_list.json()) == 1
                 print(f"✅ Reusable skills list retrieved: {skills_list.json()[0]['name']}")
 
-                # Test 1.6: Personal Vault Telemetry (Private node DB)
+                # Test 1.6: Conversation History Memory
+                hist_save = await client.post("/history", json={
+                    "user_id": "test_user_42",
+                    "role": "user",
+                    "content": "check on todays news about crypto"
+                })
+                assert hist_save.status_code == 200
+                hist_get = await client.get("/history", params={"user_id": "test_user_42", "limit": 5})
+                assert hist_get.status_code == 200
+                assert len(hist_get.json()) == 1
+                assert hist_get.json()[0]["content"] == "check on todays news about crypto"
+                print("✅ Multi-turn conversation history stored and retrieved from shared_vault.db.")
+
+                # Test 1.7: Personal Vault Telemetry (Private node DB)
                 telem_resp = await client.post("/telemetry", json={
                     "node_id": "home_server_01",
                     "node_role": "home_server",
