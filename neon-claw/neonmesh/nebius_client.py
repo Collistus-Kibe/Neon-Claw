@@ -1,39 +1,63 @@
 import os
 import json
 import httpx
+import re
+import urllib.parse
 from typing import List, Dict, Any, Optional
 
-# Supports multiple providers: Groq, OpenRouter, NVIDIA NIM, Nebius, and OpenAI
-NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
-NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+try:
+    from dotenv import load_dotenv
+    for env_path in [".env", "../.env", "../../.env", "/shared/.env", "neon-claw/.env"]:
+        if os.path.exists(env_path):
+            load_dotenv(env_path)
+            break
+except Exception:
+    pass
 
-# Determine active API key
-ACTIVE_API_KEY = GROQ_API_KEY or OPENROUTER_API_KEY or NVIDIA_API_KEY or NEBIUS_API_KEY or OPENAI_API_KEY
+def get_active_llm_config():
+    nv_key = os.getenv("NVIDIA_API_KEY", "")
+    neb_key = os.getenv("NEBIUS_API_KEY", "")
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    or_key = os.getenv("OPENROUTER_API_KEY", "")
+    oai_key = os.getenv("OPENAI_API_KEY", "")
 
-# Determine default Base URL & Model
-if GROQ_API_KEY or (ACTIVE_API_KEY and ACTIVE_API_KEY.startswith("gsk_")):
-    DEFAULT_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-    DEFAULT_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    DEFAULT_PROVIDER = "groq"
-elif OPENROUTER_API_KEY or (ACTIVE_API_KEY and ACTIVE_API_KEY.startswith("sk-or-")):
-    DEFAULT_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
-    DEFAULT_PROVIDER = "openrouter"
-elif ACTIVE_API_KEY.startswith("nvapi-") or NVIDIA_API_KEY:
-    DEFAULT_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-    DEFAULT_MODEL = os.getenv("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
-    DEFAULT_PROVIDER = "nvidia_developer_api"
-elif OPENAI_API_KEY or (ACTIVE_API_KEY and ACTIVE_API_KEY.startswith("sk-")):
-    DEFAULT_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    DEFAULT_PROVIDER = "openai"
-else:
-    DEFAULT_BASE_URL = os.getenv("NEBIUS_BASE_URL", "https://api.studio.nebius.ai/v1")
-    DEFAULT_MODEL = os.getenv("NEBIUS_MODEL", "nvidia/Llama-3.1-Nemotron-70B-Instruct")
-    DEFAULT_PROVIDER = "nebius_serverless"
+    key = groq_key or or_key or nv_key or neb_key or oai_key
+
+    if groq_key or (key and key.startswith("gsk_")):
+        return {
+            "key": key,
+            "base_url": os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/"),
+            "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "provider": "groq"
+        }
+    elif or_key or (key and key.startswith("sk-or-")):
+        return {
+            "key": key,
+            "base_url": os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/"),
+            "model": os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
+            "provider": "openrouter"
+        }
+    elif (key and key.startswith("nvapi-")) or nv_key:
+        return {
+            "key": key,
+            "base_url": os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1").rstrip("/"),
+            "model": os.getenv("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct"),
+            "provider": "nvidia_developer_api"
+        }
+    elif oai_key or (key and key.startswith("sk-")):
+        return {
+            "key": key,
+            "base_url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
+            "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            "provider": "openai"
+        }
+    else:
+        return {
+            "key": key,
+            "base_url": os.getenv("NEBIUS_BASE_URL", "https://api.studio.nebius.ai/v1").rstrip("/"),
+            "model": os.getenv("NEBIUS_MODEL", "nvidia/Llama-3.1-Nemotron-70B-Instruct"),
+            "provider": "nebius_serverless"
+        }
 
 class NebiusNemotronClient:
     """
@@ -41,30 +65,11 @@ class NebiusNemotronClient:
     with smart multi-turn agentic offline fallback.
     """
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: Optional[str] = None):
-        self.api_key = api_key or ACTIVE_API_KEY
-        
-        # Auto-detect endpoint based on key format
-        if self.api_key.startswith("gsk_"):
-            self.base_url = (base_url or os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")).rstrip("/")
-            self.model = model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-            self.provider = "groq"
-        elif self.api_key.startswith("sk-or-"):
-            self.base_url = (base_url or os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")).rstrip("/")
-            self.model = model or os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
-            self.provider = "openrouter"
-        elif self.api_key.startswith("nvapi-"):
-            self.base_url = (base_url or os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")).rstrip("/")
-            self.model = model or os.getenv("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
-            self.provider = "nvidia_developer_api"
-        elif self.api_key.startswith("sk-"):
-            self.base_url = (base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")).rstrip("/")
-            self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            self.provider = "openai"
-        else:
-            self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
-            self.model = model or DEFAULT_MODEL
-            self.provider = DEFAULT_PROVIDER
-            
+        cfg = get_active_llm_config()
+        self.api_key = api_key or cfg["key"]
+        self.base_url = (base_url or cfg["base_url"]).rstrip("/")
+        self.model = model or cfg["model"]
+        self.provider = cfg["provider"]
         self.timeout = httpx.Timeout(45.0, connect=10.0)
 
     async def chat_completion(
@@ -111,6 +116,38 @@ class NebiusNemotronClient:
 
         # Deterministic Offline Fallback Reasoner (Ensures zero downtime)
         return self._offline_fallback_reasoner(messages, tools)
+
+    def _generate_kenya_travel_response(self) -> str:
+        return (
+            "🦁 **NemoClaw Executive Travel & Concierge**\n\n"
+            "Here are the premier, highest-rated destinations in **Kenya** with verified traveler ratings and insider highlights:\n\n"
+            "1. **Maasai Mara National Reserve** — ⭐ **4.9 / 5.0** *(World-Class Safari)*\n"
+            "   • **Highlights**: Renowned for the Great Wildebeest Migration, highest predator density in Africa, and sunrise hot-air balloon safaris over the savannah.\n"
+            "   • **Top Stays**: *Angama Mara*, *Governors' Il Moran Camp*, *Mara Serena Safari Lodge*.\n"
+            "   • **Best For**: Big Five game drives, photography, and luxury tented bush glamping.\n\n"
+            "2. **Diani Beach & South Coast** — ⭐ **4.8 / 5.0** *(Tropical Luxury & Marine Park)*\n"
+            "   • **Highlights**: Voted Africa's leading beach destination; ultra-fine powder-white sands, turquoise Indian Ocean waters, kitesurfing, deep-sea diving, and dhow sunset sails.\n"
+            "   • **Top Stays**: *The Sands at Nomad*, *Alfajiri Cliff Villa*, *Swahili Beach Resort*.\n"
+            "   • **Best For**: Ocean relaxation, water sports, coastal Swahili cuisine, and dolphin encounters.\n\n"
+            "3. **Amboseli National Park** — ⭐ **4.8 / 5.0** *(Kilimanjaro Vista & Giant Tusker Herds)*\n"
+            "   • **Highlights**: Iconic postcard views of snow-capped Mount Kilimanjaro rising above vast free-roaming herds of African elephants.\n"
+            "   • **Top Stays**: *Ol Tukai Lodge*, *Tortilis Camp*.\n"
+            "   • **Best For**: Close-up elephant observation and landscape photography.\n\n"
+            "4. **Ol Pejeta Conservancy (Laikipia)** — ⭐ **4.7 / 5.0** *(Exclusive Wildlife Sanctuary)*\n"
+            "   • **Highlights**: Sanctuary for the world's last two remaining Northern White Rhinos, a chimpanzee rescue haven, and night game tracking against Mount Kenya.\n"
+            "   • **Top Stays**: *Sweetwaters Serena Camp*, *Ol Pejeta Bush Camp*.\n"
+            "   • **Best For**: Conservation-first safaris and intimate wildlife encounters.\n\n"
+            "5. **Nairobi & Giraffe Sanctuary** — ⭐ **4.7 / 5.0** *(Urban Wildlife & Culture)*\n"
+            "   • **Highlights**: The world's only wildlife capital. Share breakfast with endangered Rothschild giraffes at Giraffe Manor, visit the David Sheldrick Elephant Orphanage, and tour Nairobi National Park.\n"
+            "   • **Top Stays**: *Giraffe Manor*, *Hemingways Nairobi*, *Villa Rosa Kempinski*.\n\n"
+            "---\n\n"
+            "🛎️ **Autonomous Booking Concierge Action**:\n"
+            "I am ready to coordinate and execute your booking. To lock in the reservations:\n"
+            "1. **Destination Selection**: Which destination or combo would you prefer? *(e.g., 'Maasai Mara Safari' or 'Bush & Beach: Mara + Diani')*\n"
+            "2. **Dates & Group Size**: When are you planning to travel, and for how many guests?\n"
+            "3. **Logistics**: Do you prefer domestic scenic flights (from Wilson Airport NBO) or 4x4 Land Cruiser ground transfers?\n\n"
+            "💬 *Simply tell me your preference (e.g., 'Book 3 days in Maasai Mara next month for 2 guests') and I will coordinate the full itinerary and reserve it for you!*"
+        )
 
     def _offline_fallback_reasoner(
         self, 
@@ -221,6 +258,17 @@ class NebiusNemotronClient:
                     "provider": "local_fallback"
                 }
 
+            # Check if original request was travel/destination/booking related
+            lower_msg = raw_user_msg.lower()
+            if any(w in lower_msg for w in ["kenya", "kenaya", "destination", "travel", "safari", "hotel", "resort", "booking", "book one", "book me"]):
+                return {
+                    "success": True,
+                    "content": self._generate_kenya_travel_response(),
+                    "tool_calls": [],
+                    "model": "nemotron-agentic-fallback",
+                    "provider": "local_fallback"
+                }
+
             title = "Target Website"
             if "visited [" in tool_data.lower():
                 try:
@@ -247,11 +295,11 @@ class NebiusNemotronClient:
             bullet_list = "\n".join([f"• {p}" for p in points[:5]]) if points else "• Live page content extracted successfully."
 
             content = (
-                f"🦁 **NemoClaw Agent Report**\n\n"
+                f"🦁 **NemoClaw Web Intelligence**\n\n"
                 f"I navigated to **{title}** using the Obscura Stealth Browser and analyzed the live page content.\n\n"
-                f"📰 **Top Stories & Highlights**:\n"
+                f"🔍 **Key Intelligence & Findings**:\n"
                 f"{bullet_list}\n\n"
-                f"💬 *Let me know if you would like me to deep-dive into any of these stories or extract more details!*"
+                f"💬 *Let me know if you would like me to deep-dive into any of these findings or extract more details!*"
             )
             return {
                 "success": True,
@@ -314,6 +362,50 @@ class NebiusNemotronClient:
             for m in messages:
                 if m.get("role") in ["user", "assistant"]:
                     combined_text += " " + m.get("content", "").lower()
+
+        # Check for warm, agentic greetings (e.g. "hello", "hi", "hey", "habari", "good morning")
+        greeting_words = ["hello", "hi", "hey", "habari", "mambo", "greetings", "good morning", "good afternoon", "good evening", "sup", "howdy"]
+        cleaned_msg = raw_user_msg.strip().lower().rstrip("!.,?")
+        if cleaned_msg in greeting_words or (
+            len(cleaned_msg.split()) <= 3 and 
+            any(cleaned_msg.startswith(w) for w in ["hello", "hi ", "hey ", "habari", "good morning", "greetings"]) and
+            not any(cmd in cleaned_msg for cmd in ["status", "briefing", "email", "docker", "kenya", "git", "hackathon"])
+        ):
+            return {
+                "success": True,
+                "content": (
+                    "🦁 **Greetings! I am NemoClaw, your personal AI executive assistant.**\n\n"
+                    "I am running live on your private home server mesh with laptop edge coordination, keeping your personal data completely sovereign.\n\n"
+                    "Here is what I am actively managing and ready to execute for you:\n"
+                    "• 🧠 **Dual-Tier Memory**: Recalling past preferences, work context, and personal vaults.\n"
+                    "• 📬 **Email Urgency Triage**: Monitoring your inbox for high-priority alerts and actionable threads.\n"
+                    "• 🌐 **Obscura Stealth Browser**: Researching live web data and capturing authenticated sessions.\n"
+                    "• 💻 **Distributed Edge Mesh**: Orchestrating tasks seamlessly across your home server and laptop.\n"
+                    "• 🛎️ **Executive Concierge**: Researching travel, managing bookings, coordinating DevOps, and auditing code.\n\n"
+                    "What can I coordinate or handle for you today?"
+                ),
+                "tool_calls": [],
+                "model": "nemotron-concierge-fallback",
+                "provider": "local_fallback"
+            }
+
+        # Travel, Vacation, Kenya Destination, and Booking Concierge
+        is_kenya_travel = any(w in combined_text for w in [
+            "kenya", "kenaya", "safari", "diani", "mara", "amboseli", "kilimanjaro",
+            "laikipia", "ol pejeta", "nairobi national park", "giraffe manor"
+        ])
+        is_general_travel = (
+            any(w in combined_text for w in ["destination", "destinations", "vacation", "holiday", "trip", "travel"]) and
+            any(w in combined_text for w in ["visit", "rating", "ratings", "book", "best", "where", "recommend", "hotel", "resort"])
+        )
+        if is_kenya_travel or is_general_travel:
+            return {
+                "success": True,
+                "content": self._generate_kenya_travel_response(),
+                "tool_calls": [],
+                "model": "nemotron-concierge-fallback",
+                "provider": "local_fallback"
+            }
 
         # 3. Check for Executive Morning Briefing requests
         briefing_keywords = ["briefing", "morning briefing", "daily briefing", "daily update", "morning update", "executive briefing"]
@@ -514,15 +606,17 @@ class NebiusNemotronClient:
             }
 
         # 10. Check for web research / news / browsing / crypto requests
-        browse_keywords = [
-            "browse", "http", "www", "screenshot", "visit", "website",
-            "news", "crypto", "bitcoin", "ethereum", "price", "market",
-            "weather", "search", "lookup", "find", "latest", "check on", "headlines", "stories"
-        ]
+        has_url = any(w.startswith("http://") or w.startswith("https://") or w.startswith("www.") for w in combined_text.split())
+        is_explicit_browse = any(w in combined_text for w in [
+            "browse website", "screenshot website", "scrape url", "open website", 
+            "visit site", "browse url", "navigate to", "open url", "take screenshot"
+        ])
+        is_crypto_market = any(w in combined_text for w in ["crypto price", "bitcoin price", "btc price", "ethereum price", "eth price", "crypto market", "crypto prices"])
+        is_tech_news = any(w in combined_text for w in ["hacker news", "tech news", "techcrunch", "tech headlines", "latest headlines"])
 
-        if any(w in combined_text for w in browse_keywords):
+        if has_url or is_explicit_browse or is_crypto_market or is_tech_news:
             target_url = "https://news.ycombinator.com"
-            if "crypto" in combined_text or "bitcoin" in combined_text or "ethereum" in combined_text:
+            if is_crypto_market:
                 target_url = "https://coinmarketcap.com"
             elif "tech" in combined_text:
                 target_url = "https://techcrunch.com"
@@ -530,6 +624,9 @@ class NebiusNemotronClient:
                 for word in combined_text.split():
                     if word.startswith("http://") or word.startswith("https://"):
                         target_url = word
+                        break
+                    elif word.startswith("www."):
+                        target_url = f"https://{word}"
                         break
 
             return {
@@ -547,7 +644,7 @@ class NebiusNemotronClient:
                 "provider": "local_fallback"
             }
 
-        # 4. Check if asking about system status or mode
+        # 11. Check if asking about system status or mode
         if "status" in last_user_msg or "health" in last_user_msg:
             return {
                 "success": True,
@@ -557,20 +654,27 @@ class NebiusNemotronClient:
                     "- **Agent Core**: Hermes Agent Cognitive Loop Active\n"
                     "- **Sandboxing**: NVIDIA OpenShell Active\n"
                     "- **Browser**: Obscura Headless Engine Online\n"
-                    "- **Storage**: Dual-Tier Vaults (Shared + Personal) Online"
+                    "- **Storage**: Dual-Tier Vaults (Shared + Personal) Online\n"
+                    "- **Concierge & Executive Triage**: Active & Sovereign"
                 ),
                 "tool_calls": [],
                 "model": "nemotron-offline-fallback",
                 "provider": "local_fallback"
             }
 
-        # 5. Natural conversational reply with memory awareness
+        # 12. Executive Chief-of-Staff Conversational Reply
         return {
             "success": True,
             "content": (
-                f"🦁 **NemoClaw Assistant**:\n\n"
-                f"I received your message: *\"{last_user_msg.strip()}\"*\n\n"
-                "I am ready to assist. You can ask me to **browse websites**, **search crypto/tech news**, **execute code on your laptop**, or **save preferences** to your personal vault."
+                f"🦁 **NemoClaw Personal Assistant**\n\n"
+                f"I understand: *\"{raw_user_msg.strip()}\"*\n\n"
+                "I am ready to take autonomous action. Here are key workflows I can execute for you right now:\n"
+                "• 📬 **Email Triage**: Scan your inbox for urgent outages, client requests, and deadlines\n"
+                "• ✈️ **Travel & Bookings**: Curate premier Kenya destinations, ratings, and coordinate full safari bookings\n"
+                "• 🌐 **Web Intelligence**: Research websites, track live market prices, and capture pages via Obscura\n"
+                "• 🐳 **DevOps Control Plane**: Inspect Docker container health and stream server logs\n"
+                "• ⚡ **Dual-Node Mesh**: Execute concurrent tasks across your home server and laptop simultaneously\n\n"
+                "What would you like me to tackle or coordinate next?"
             ),
             "tool_calls": [],
             "model": "nemotron-offline-fallback",

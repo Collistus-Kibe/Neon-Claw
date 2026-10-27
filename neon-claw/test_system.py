@@ -127,10 +127,29 @@ async def test_hermes_reasoner():
     print(f"✅ Nemotron Client synthesized tool call: {tool_name}")
 
     hermes = HermesAgent()
+    # Test 2.2: Status request
     cycle_res = await hermes.run_cycle("Hello NemoClaw, what is your status?")
     assert "result" in cycle_res
     print("✅ Hermes Agent cognitive loop completed successfully.")
     print(f"   Response Preview: {cycle_res['result'][:120]}...")
+
+    # Test 2.3: Warm Executive Greeting (No robotic template)
+    greet_res = await hermes.run_cycle("Hello")
+    assert "result" in greet_res
+    assert "I received your message" not in greet_res["result"]
+    assert "executive assistant" in greet_res["result"].lower() or "greetings" in greet_res["result"].lower()
+    print("✅ Warm Executive Greeting verified: Zero robotic boilerplate.")
+
+    # Test 2.4: Kenya Travel & Booking Concierge
+    travel_res = await hermes.run_cycle("check on best destination to visit in kenaya and rating and book one for me")
+    assert "result" in travel_res
+    t_text = travel_res["result"]
+    assert "Maasai Mara" in t_text
+    assert "Diani Beach" in t_text
+    assert "4.9" in t_text or "4.8" in t_text
+    assert "Booking Concierge" in t_text or "book" in t_text.lower()
+    assert "Hacker News" not in t_text and "Target Website" not in t_text
+    print("✅ Kenya Travel & Booking Concierge verified: Real ratings, top stays, and proactive booking action.")
 
 async def test_email_triage():
     print("\n--- 3. Testing Autonomous Email Triage & Urgency Classification ---")

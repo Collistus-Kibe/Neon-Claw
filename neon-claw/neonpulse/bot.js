@@ -151,7 +151,6 @@ bot.on('text', async (ctx) => {
     } catch(e) {}
 
     await taskQueue.add('agentTask', { prompt: text, userId });
-    ctx.reply("🦁 Processing with NVIDIA Nemotron & Hermes...");
 });
 
 // 8. Voice & Speech Ingestion Handler (.ogg / Opus Telegram Voice Notes)
@@ -190,7 +189,7 @@ bot.on(['voice', 'audio'], async (ctx) => {
             transcribedText = "Triage my inbox and give me a briefing";
         }
 
-        ctx.reply(`🎙️ "*${transcribedText}*"\n\n🦁 Dispatching speech prompt to Nemotron & Hermes...`);
+        ctx.reply(`🎙️ "*${transcribedText}*"`);
         await taskQueue.add('agentTask', { prompt: transcribedText, userId, isVoice: true });
     } catch(err) {
         console.error("[NeonPulse] Failed to process voice note:", err.message);
