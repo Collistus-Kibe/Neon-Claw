@@ -131,6 +131,16 @@ class NebiusNemotronClient:
             else:
                 tool_data = raw_user_msg.split("--- tool execution data ---")[-1].strip()
 
+            # Executive Morning Briefing synthesis
+            if "executive morning briefing" in tool_data.lower() or "mesh nodes & hardware health" in tool_data.lower():
+                return {
+                    "success": True,
+                    "content": tool_data,
+                    "tool_calls": [],
+                    "model": "nemotron-agentic-fallback",
+                    "provider": "local_fallback"
+                }
+
             # Email Triage Report or email list synthesis
             if "inbox triage report" in tool_data.lower() or "urgent items" in tool_data.lower() or ("found" in tool_data.lower() and "emails:" in tool_data.lower()):
                 content = (
@@ -255,7 +265,25 @@ class NebiusNemotronClient:
                 if m.get("role") in ["user", "assistant"]:
                     combined_text += " " + m.get("content", "").lower()
 
-        # 3. Check for Email Triage & Autonomous Dispatch requests
+        # 3. Check for Executive Morning Briefing requests
+        briefing_keywords = ["briefing", "morning briefing", "daily briefing", "daily update", "morning update", "executive briefing"]
+        if any(w in combined_text for w in briefing_keywords):
+            return {
+                "success": True,
+                "content": "Compiling your Autonomous Executive Morning Briefing (Email Triage + Mesh Telemetry + Tech Radar)...",
+                "tool_calls": [{
+                    "id": "call_briefing_01",
+                    "type": "function",
+                    "function": {
+                        "name": "generate_executive_briefing",
+                        "arguments": json.dumps({"include_news": True})
+                    }
+                }],
+                "model": "nemotron-offline-fallback",
+                "provider": "local_fallback"
+            }
+
+        # 4. Check for Email Triage & Autonomous Dispatch requests
         email_keywords = [
             "email", "emails", "inbox", "triage", "urgent mail", "urgent email",
             "check email", "check my email", "check inbox", "manage email", "unread email"

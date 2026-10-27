@@ -126,7 +126,18 @@ bot.command('status', async (ctx) => {
     ctx.reply(`🩺 **NemoClaw Mesh Status**:\n` + checks.join('\n'));
 });
 
-// 6. Natural Language Handler (No /ask needed!)
+// 6. /briefing Command (Autonomous Morning Briefing on demand)
+bot.command('briefing', async (ctx) => {
+    if (!isUserAuthorized(ctx)) return;
+    const userId = ctx.from.id.toString();
+    try {
+        await ctx.sendChatAction('typing');
+    } catch(e) {}
+    ctx.reply("🦁 Compiling your Autonomous Executive Morning Briefing (Email Triage + Mesh Telemetry + Tech Radar)...");
+    await taskQueue.add('agentTask', { prompt: "generate executive morning briefing", userId });
+});
+
+// 7. Natural Language Handler (No /ask needed!)
 bot.on('text', async (ctx) => {
     if (!isUserAuthorized(ctx)) {
         return ctx.reply("⛔ Access Denied. Your Telegram ID is not authorized.");
@@ -180,6 +191,45 @@ if (token && token !== "your_telegram_bot_token_here") {
 } else {
     printBanner("Telegram Gateway (Mock Mode)", "Worker active, polling disabled");
 }
+
+// 8. Autonomous Proactive Morning Briefing Cron Scheduler
+const BRIEFING_ENABLED = process.env.BRIEFING_ENABLED !== 'false';
+const BRIEFING_CRON_HOUR = parseInt(process.env.BRIEFING_CRON_HOUR || '8', 10);
+let lastBriefingDate = "";
+
+function initAutonomousBriefingScheduler() {
+    if (!BRIEFING_ENABLED) {
+        console.log("[NeonPulse] Autonomous Morning Briefing scheduler disabled.");
+        return;
+    }
+    console.log(`[NeonPulse] Autonomous Morning Briefing scheduler active (Daily at ${BRIEFING_CRON_HOUR}:00).`);
+
+    setInterval(async () => {
+        try {
+            const now = new Date();
+            const currentHour = now.getHours();
+            const todayStr = now.toISOString().slice(0, 10);
+
+            // Fire once per day when clock matches BRIEFING_CRON_HOUR
+            if (currentHour === BRIEFING_CRON_HOUR && lastBriefingDate !== todayStr) {
+                lastBriefingDate = todayStr;
+                console.log(`[NeonPulse] 🦁 Triggering autonomous morning briefing for ${todayStr}...`);
+
+                const recipients = allowedUserIds.length > 0 ? allowedUserIds : [];
+                for (const uid of recipients) {
+                    await taskQueue.add('agentTask', {
+                        prompt: "generate executive morning briefing",
+                        userId: uid
+                    });
+                }
+            }
+        } catch (err) {
+            console.error("[NeonPulse] Briefing scheduler error:", err.message);
+        }
+    }, 60 * 1000);
+}
+
+initAutonomousBriefingScheduler();
 
 process.once('SIGINT', () => bot.stop && bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop && bot.stop('SIGTERM'));

@@ -137,6 +137,18 @@ async def get_history(user_id: str, limit: int = 6):
     except Exception as e:
         return []
 
+@app.get("/telemetry/latest")
+async def get_latest_telemetry(node_id: Optional[str] = None):
+    global http_client
+    try:
+        params = {}
+        if node_id:
+            params["node_id"] = node_id
+        resp = await http_client.get(f"{VAULT_URL}/telemetry/latest", params=params)
+        return resp.json()
+    except Exception as e:
+        return []
+
 @app.post("/reflect")
 async def reflect(req: ReflectRequest):
     # Reflection loop: introspects recent memories and produces consolidated insights
@@ -145,3 +157,4 @@ async def reflect(req: ReflectRequest):
         "trigger": req.trigger, 
         "summary": "Memory consolidation pass completed."
     }
+

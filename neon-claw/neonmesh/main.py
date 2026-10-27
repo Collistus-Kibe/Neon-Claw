@@ -40,3 +40,9 @@ async def run_agent(agent_type: str, req: PromptRequest):
     
     agent = HermesAgent(specialization=spec)
     return await agent.run_cycle(req.prompt, user_id=req.user_id, context=req.context)
+
+@app.post("/briefing")
+async def get_briefing(req: PromptRequest):
+    agent = HermesAgent(specialization="hermes")
+    return await agent.run_briefing(user_id=req.user_id)
+

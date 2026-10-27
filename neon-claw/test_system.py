@@ -184,10 +184,35 @@ async def test_email_triage():
     assert "Inbox Triage Report" in resp["result"] or "URGENT" in resp["result"] or "CRITICAL" in resp["result"]
     print("✅ Hermes Agent autonomous email triage cycle passed with structured executive report.")
 
+async def test_executive_briefing():
+    print("\n--- 4. Testing Autonomous Executive Morning Briefing (/briefing) ---")
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.join(BASE_DIR, "neonmesh"))
+    from neonmesh.agents.hermes_agent import HermesAgent
+
+    hermes = HermesAgent()
+
+    # Test 4.1: Direct run_briefing generation
+    briefing = await hermes.run_briefing(user_id="test_user_briefing")
+    assert "result" in briefing
+    res_text = briefing["result"]
+    assert "NemoClaw Executive Morning Briefing" in res_text
+    assert "Inbox & Email Urgency Radar" in res_text
+    assert "Mesh Nodes & Hardware Health" in res_text
+    assert "Autonomous Next Steps" in res_text
+    print("✅ Executive Morning Briefing compiled with Email Triage, Hardware Health, and Action Items.")
+
+    # Test 4.2: Natural Language Briefing Trigger via Hermes Cognitive Loop
+    cycle_res = await hermes.run_cycle("generate executive morning briefing", user_id="test_user_briefing")
+    assert "result" in cycle_res
+    assert "Executive Morning Briefing" in cycle_res["result"] or "Mesh Nodes" in cycle_res["result"]
+    print("✅ Natural language /briefing prompt dispatched and synthesized successfully via Hermes Agent.")
+
 async def main():
     await test_dual_vault()
     await test_hermes_reasoner()
     await test_email_triage()
+    await test_executive_briefing()
     print("\n🎉 ALL TESTS PASSED! NEONCLAW IS FULLY OPERATIONAL.\n")
 
 if __name__ == "__main__":

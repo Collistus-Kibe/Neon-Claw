@@ -84,6 +84,8 @@ services:
       - REDIS_PORT=6379
       - NEONCORE_URL=http://neoncore:3000
       - NEONMEM_URL=http://neonmem:8002
+      - BRIEFING_ENABLED=${BRIEFING_ENABLED:-true}
+      - BRIEFING_CRON_HOUR=${BRIEFING_CRON_HOUR:-8}
     depends_on:
       - redis
       - neoncore
