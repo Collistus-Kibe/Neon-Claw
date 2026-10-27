@@ -1,8 +1,0 @@
-feat: autonomous executive morning briefing and proactive cron scheduler
-
-- Implemented /briefing command and run_briefing engine in HermesAgent
-- Combined real-time Email Urgency Triage, Mesh Telemetry, and Tech Radar into a unified briefing
-- Added daily autonomous cron scheduler in neonpulse (fires proactively to Telegram)
-- Added /telemetry/latest proxy route in neonmem and graceful host fallbacks in neonvault
-- Exposed BRIEFING_ENABLED and BRIEFING_CRON_HOUR in docker-compose.yml and .env.example
-- 100% test suite verification in test_system.py (all 4 test suites passed)
