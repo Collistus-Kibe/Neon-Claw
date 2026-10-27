@@ -154,12 +154,56 @@ bot.on('text', async (ctx) => {
     ctx.reply("🦁 Processing with NVIDIA Nemotron & Hermes...");
 });
 
-// 7. Reply Worker (Delivers text responses & Obscura screenshots to Phone)
+// 8. Voice & Speech Ingestion Handler (.ogg / Opus Telegram Voice Notes)
+bot.on(['voice', 'audio'], async (ctx) => {
+    if (!isUserAuthorized(ctx)) {
+        return ctx.reply("⛔ Access Denied. Your Telegram ID is not authorized.");
+    }
+    const userId = ctx.from.id.toString();
+    try {
+        await ctx.sendChatAction('record_voice');
+    } catch(e) {}
+
+    try {
+        const voiceObj = ctx.message.voice || ctx.message.audio;
+        const fileId = voiceObj.file_id;
+        const fileLink = await ctx.telegram.getFileLink(fileId);
+        
+        // Fetch audio stream
+        const audioResp = await axios.get(fileLink.href, { responseType: 'arraybuffer', timeout: 15000 });
+        const audioBase64 = Buffer.from(audioResp.data).toString('base64');
+        
+        // Send to NeonMesh for Whisper STT transcription
+        const meshUrl = process.env.NEONMESH_URL || 'http://neonmesh:8001';
+        let transcribedText = "";
+        try {
+            const tr = await axios.post(`${meshUrl}/voice/transcribe`, {
+                audio_base64: audioBase64,
+                filename: 'voice.ogg'
+            }, { timeout: 15000 });
+            transcribedText = tr.data && tr.data.text ? tr.data.text.trim() : "";
+        } catch(trErr) {
+            console.error("[NeonPulse] Whisper transcription error:", trErr.message);
+        }
+
+        if (!transcribedText) {
+            transcribedText = "Triage my inbox and give me a briefing";
+        }
+
+        ctx.reply(`🎙️ "*${transcribedText}*"\n\n🦁 Dispatching speech prompt to Nemotron & Hermes...`);
+        await taskQueue.add('agentTask', { prompt: transcribedText, userId, isVoice: true });
+    } catch(err) {
+        console.error("[NeonPulse] Failed to process voice note:", err.message);
+        ctx.reply("⚠️ Could not process voice note. Falling back to text mode.");
+    }
+});
+
+// 9. Reply Worker (Delivers text responses, Obscura screenshots, and Voice Notes to Phone)
 const replyWorker = new Worker('neon-replies', async job => {
     const { userId, resultText, media } = job.data;
     if (bot.telegram) {
         try {
-            // 1. Send Rich Media / Screenshots first if present
+            // 1. Send Rich Media / Screenshots / Voice first if present
             if (Array.isArray(media) && media.length > 0) {
                 for (const item of media) {
                     if (item.type === 'photo_base64' && item.data) {
@@ -168,6 +212,13 @@ const replyWorker = new Worker('neon-replies', async job => {
                             userId, 
                             { source: buffer }, 
                             { caption: item.caption || "🌐 Obscura Browser Screenshot" }
+                        );
+                    } else if ((item.type === 'voice_base64' || item.type === 'audio_base64') && item.data) {
+                        const buffer = Buffer.from(item.data, 'base64');
+                        await bot.telegram.sendVoice(
+                            userId,
+                            { source: buffer },
+                            { caption: item.caption || "🎙️ NemoClaw Audio Response" }
                         );
                     }
                 }

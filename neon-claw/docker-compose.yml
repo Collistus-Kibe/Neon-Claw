@@ -46,6 +46,11 @@ services:
       - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
       - EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST:-smtp.gmail.com}
       - EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT:-587}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "127.0.0.1:8001:8001"
     depends_on:

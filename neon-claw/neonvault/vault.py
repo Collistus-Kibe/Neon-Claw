@@ -53,6 +53,13 @@ class NodeTelemetryIn(BaseModel):
     battery_level: Optional[int] = None
     tailscale_ip: Optional[str] = None
 
+class SystemIntegrationIn(BaseModel):
+    id: str
+    service_name: str
+    config_json: Dict[str, Any] = Field(default_factory=dict)
+    is_enabled: bool = True
+    configured_by_node: str = "laptop"
+
 class LocalSecretIn(BaseModel):
     key: str
     encrypted_value: str
@@ -215,6 +222,53 @@ async def get_skill(skill_id: str):
         if not row:
             raise HTTPException(status_code=404, detail="Skill not found")
         return dict(row)
+
+# ==============================================================================
+# 1.3. DYNAMIC SYSTEM INTEGRATIONS (Synchronized Across Mesh)
+# ==============================================================================
+
+@app.post("/integrations")
+async def register_integration(item: SystemIntegrationIn):
+    async with aiosqlite.connect(SHARED_DB) as db:
+        await db.execute(
+            """INSERT OR REPLACE INTO system_integrations
+               (id, service_name, config_json, is_enabled, configured_by_node, updated_at)
+               VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+            (item.id, item.service_name, json.dumps(item.config_json), item.is_enabled, item.configured_by_node)
+        )
+        await db.commit()
+        return {"id": item.id, "status": "integrated", "vault": "shared"}
+
+@app.get("/integrations")
+async def list_integrations():
+    async with aiosqlite.connect(SHARED_DB) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM system_integrations WHERE is_enabled = 1")
+        rows = await cursor.fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["config_json"] = json.loads(d.get("config_json", "{}"))
+            except Exception:
+                pass
+            result.append(d)
+        return result
+
+@app.get("/integrations/{integration_id}")
+async def get_integration(integration_id: str):
+    async with aiosqlite.connect(SHARED_DB) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM system_integrations WHERE id = ?", (integration_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Integration not found")
+        d = dict(row)
+        try:
+            d["config_json"] = json.loads(d.get("config_json", "{}"))
+        except Exception:
+            pass
+        return d
 
 # ==============================================================================
 # 2. PERSONAL VAULT ENDPOINTS (Private to Node - Never Synced)

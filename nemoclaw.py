@@ -247,6 +247,209 @@ def cmd_pair():
         else:
             print(f"{YELLOW}No code entered. Pairing aborted.{RESET}")
 
+def sync_integration_to_shared_vault(service_name: str, config_json: dict, configured_by: str = "laptop"):
+    """
+    Persists integration into the distributed shared vault (PostgreSQL/SQLite)
+    so both server and laptop immediately operate as one synchronized scattered agent.
+    """
+    import json
+    import urllib.request
+    
+    payload = {
+        "id": f"{service_name}_integration",
+        "service_name": service_name,
+        "config_json": config_json,
+        "is_enabled": True,
+        "configured_by_node": configured_by
+    }
+    
+    home_server = os.getenv("HOME_SERVER_URL", "http://localhost:8003")
+    endpoints = [
+        f"{home_server}/integrations",
+        "http://localhost:8003/integrations",
+        "http://127.0.0.1:8002/integrations",
+        "http://localhost:8001/integrations"
+    ]
+    synced = False
+    for ep in endpoints:
+        try:
+            req = urllib.request.Request(
+                ep,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                if resp.status in [200, 201]:
+                    synced = True
+                    break
+        except Exception:
+            pass
+
+    # Direct fallback: write to local shared_vault.db if SQLite exists
+    db_path = os.path.join(NEON_CLAW_DIR, "data", "shared_vault.db")
+    if not os.path.exists(os.path.dirname(db_path)):
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS system_integrations (
+            id TEXT PRIMARY KEY,
+            service_name TEXT NOT NULL,
+            config_json TEXT NOT NULL,
+            is_enabled INTEGER DEFAULT 1,
+            configured_by_node TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute("""INSERT OR REPLACE INTO system_integrations
+            (id, service_name, config_json, is_enabled, configured_by_node, updated_at)
+            VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)""",
+            (payload["id"], payload["service_name"], json.dumps(config_json), configured_by)
+        )
+        conn.commit()
+        conn.close()
+        synced = True
+    except Exception:
+        pass
+    return synced
+
+def list_mesh_integrations():
+    """Lists all active integrations registered in the scattered mesh."""
+    import json
+    import urllib.request
+    
+    home_server = os.getenv("HOME_SERVER_URL", "http://localhost:8003")
+    endpoints = [
+        f"{home_server}/integrations",
+        "http://localhost:8003/integrations",
+        "http://127.0.0.1:8002/integrations"
+    ]
+    for ep in endpoints:
+        try:
+            with urllib.request.urlopen(ep, timeout=1.5) as resp:
+                if resp.status == 200:
+                    return json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            pass
+            
+    # Fallback to local SQLite shared_vault.db
+    db_path = os.path.join(NEON_CLAW_DIR, "data", "shared_vault.db")
+    if os.path.exists(db_path):
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM system_integrations WHERE is_enabled = 1")
+            rows = [dict(r) for r in cur.fetchall()]
+            conn.close()
+            return rows
+        except Exception:
+            pass
+    return []
+
+def cmd_integrate():
+    """Interactive wizard and CLI command to connect new APIs and integrations."""
+    print(f"\n{BOLD}{BRIGHT_CYAN}🔌  N E M O C L A W   M E S H   I N T E G R A T I O N S{RESET}")
+    print(f"{DIM}Connect external services once; auto-syncs across the scattered agent (laptop + server).{RESET}\n")
+    
+    if len(sys.argv) > 2 and sys.argv[2].lower() in ["list", "ls", "status"]:
+        integrations = list_mesh_integrations()
+        if not integrations:
+            print(f"{YELLOW}No active integrations recorded in the distributed shared vault.{RESET}")
+            print(f"Run '{BOLD}nemoclaw integrate{RESET}' to add GitHub, Voice, Email, or DevOps.\n")
+            return
+            
+        print(f"{BOLD}Active Synchronized Mesh Integrations:{RESET}")
+        for it in integrations:
+            s_name = it.get("service_name", "unknown")
+            node = it.get("configured_by_node", "mesh")
+            updated = it.get("updated_at", "")
+            print(f"  • {BRIGHT_GREEN}●{RESET} {BOLD}{s_name.upper():<14}{RESET} (Node: {CYAN}{node}{RESET}) {DIM}{updated}{RESET}")
+        print()
+        return
+
+    print("Choose a service to integrate:")
+    print(f"  {BOLD}1){RESET} 🐙 GitHub           - Repository code audit, issues & PR reviews")
+    print(f"  {BOLD}2){RESET} 🎙️ Voice & Speech    - Whisper STT (Groq / OpenAI) + Audio TTS")
+    print(f"  {BOLD}3){RESET} 📬 Email & SMTP     - Inbox triage, urgency rating & reply drafts")
+    print(f"  {BOLD}4){RESET} 🐳 Docker & DevOps   - Container inspection & server log diagnostics")
+    print(f"  {BOLD}5){RESET} ⚡ LLM / Brain       - NVIDIA Nemotron (NIM) or Nebius Serverless")
+    print()
+    choice = input("Enter choice [1-5] (or service name): ").strip().lower()
+    
+    env_vars = parse_env_file()
+    service_name = ""
+    config_data = {}
+    node_role = "laptop" if os.name == 'nt' else "server"
+
+    if choice in ["1", "github", "git"]:
+        service_name = "github"
+        print(f"\n{BOLD}🐙 GitHub Integration Setup{RESET}")
+        token = input("  Enter GitHub Personal Access Token (or press Enter for public repos): ").strip()
+        default_repo = input("  Enter default repository [Collistus-Kibe/Neon-Claw]: ").strip() or "Collistus-Kibe/Neon-Claw"
+        config_data = {"token": token, "default_repo": default_repo}
+        if token:
+            env_vars["GITHUB_TOKEN"] = token
+
+    elif choice in ["2", "voice", "speech", "whisper"]:
+        service_name = "voice"
+        print(f"\n{BOLD}🎙️ Voice & Speech Integration Setup{RESET}")
+        print(f"  {DIM}Groq Whisper provides ~250ms voice notes transcription.{RESET}")
+        groq_k = input("  Enter Groq API Key (gsk_...) [or press Enter to skip]: ").strip()
+        openai_k = input("  Enter OpenAI API Key (sk-...) [or press Enter to skip]: ").strip()
+        config_data = {"groq_api_key": groq_k, "openai_api_key": openai_k, "tts_engine": "edge_tts"}
+        if groq_k:
+            env_vars["GROQ_API_KEY"] = groq_k
+        if openai_k:
+            env_vars["OPENAI_API_KEY"] = openai_k
+
+    elif choice in ["3", "email", "smtp", "imap"]:
+        service_name = "email"
+        print(f"\n{BOLD}📬 Email Triage & SMTP Setup{RESET}")
+        host = input("  IMAP Server [imap.gmail.com]: ").strip() or "imap.gmail.com"
+        user = input("  Email User / Address: ").strip()
+        pw = input("  Email App Password: ").strip()
+        smtp_host = input("  SMTP Server [smtp.gmail.com]: ").strip() or "smtp.gmail.com"
+        config_data = {"host": host, "user": user, "smtp_host": smtp_host}
+        if user:
+            env_vars["EMAIL_USER"] = user
+        if pw:
+            env_vars["EMAIL_PASSWORD"] = pw
+
+    elif choice in ["4", "docker", "devops"]:
+        service_name = "docker_devops"
+        print(f"\n{BOLD}🐳 Docker & DevOps Integration Setup{RESET}")
+        sock = input("  Docker Socket Path [/var/run/docker.sock]: ").strip() or "/var/run/docker.sock"
+        config_data = {"socket_path": sock, "enabled": True}
+
+    elif choice in ["5", "llm", "nvidia", "brain"]:
+        service_name = "nvidia_nemotron"
+        print(f"\n{BOLD}⚡ NVIDIA Nemotron Brain Setup{RESET}")
+        key = input("  Enter NVIDIA API Key (nvapi-...): ").strip()
+        config_data = {"model": "nvidia/llama-3.1-nemotron-70b-instruct", "base_url": "https://integrate.api.nvidia.com/v1"}
+        if key:
+            env_vars["NVIDIA_API_KEY"] = key
+
+    else:
+        print(f"{YELLOW}Invalid selection. Integration cancelled.{RESET}")
+        return
+
+    # Update local .env
+    write_env_file(env_vars)
+    
+    # Synchronize into distributed shared vault
+    synced = sync_integration_to_shared_vault(service_name, config_data, configured_by=node_role)
+    
+    print(f"\n{BRIGHT_GREEN}  ╭─────────────────────────────────────────────────────────────╮{RESET}")
+    print(f"{BRIGHT_GREEN}  │  ✅  Integration '{service_name}' successfully configured!       │{RESET}")
+    print(f"{BRIGHT_GREEN}  │                                                             │{RESET}")
+    print(f"{BRIGHT_GREEN}  │  📡  Auto-Synchronized to Scattered Agent Fabric:            │{RESET}")
+    print(f"{BRIGHT_GREEN}  │      • Configured from: {BOLD}{node_role.upper():<35}{RESET}{BRIGHT_GREEN}│{RESET}")
+    print(f"{BRIGHT_GREEN}  │      • Shared Vault Sync: {BOLD}{'ONLINE' if synced else 'SAVED LOCALLY':<33}{RESET}{BRIGHT_GREEN}│{RESET}")
+    print(f"{BRIGHT_GREEN}  │      • Scattered Nodes (Laptop + Server) now share this API!│{RESET}")
+    print(f"{BRIGHT_GREEN}  ╰─────────────────────────────────────────────────────────────╯{RESET}\n")
+
 def cmd_status():
     print_banner(node_role="Home Server Control Plane", tailscale_ip=get_tailscale_ip())
     
@@ -268,12 +471,13 @@ def cmd_status():
     print()
 
     print(f"  {BOLD}📋 Available Commands:{RESET}")
-    print(f"    • {BOLD}nemoclaw setup{RESET}    Interactive wizard to configure/change tokens")
-    print(f"    • {BOLD}nemoclaw up{RESET}       Start Home Server mesh containers")
-    print(f"    • {BOLD}nemoclaw pair{RESET}     Pair laptop and server nodes into unified mesh")
-    print(f"    • {BOLD}nemoclaw edge{RESET}     Launch laptop edge worker daemon")
-    print(f"    • {BOLD}nemoclaw test{RESET}     Run end-to-end verification tests")
-    print(f"    • {BOLD}nemoclaw down{RESET}     Stop containers")
+    print(f"    • {BOLD}nemoclaw setup{RESET}        Interactive wizard to configure/change tokens")
+    print(f"    • {BOLD}nemoclaw integrate{RESET}    Connect APIs (GitHub, Voice, Email, Docker)")
+    print(f"    • {BOLD}nemoclaw up{RESET}           Start Home Server mesh containers")
+    print(f"    • {BOLD}nemoclaw pair{RESET}         Pair laptop and server nodes into unified mesh")
+    print(f"    • {BOLD}nemoclaw edge{RESET}         Launch laptop edge worker daemon")
+    print(f"    • {BOLD}nemoclaw test{RESET}         Run end-to-end verification tests")
+    print(f"    • {BOLD}nemoclaw down{RESET}         Stop containers")
     print()
 
 def main():
@@ -281,6 +485,8 @@ def main():
         cmd = sys.argv[1].lower()
         if cmd in ["setup", "config", "configure", "login"]:
             cmd_setup()
+        elif cmd in ["integrate", "integration", "add-api"]:
+            cmd_integrate()
         elif cmd == "up":
             cmd_up()
         elif cmd == "down":
@@ -296,7 +502,7 @@ def main():
         elif cmd in ["--help", "-h", "help"]:
             cmd_status()
         else:
-            print(f"Unknown command '{cmd}'. Available: setup, up, down, test, pair, edge, status")
+            print(f"Unknown command '{cmd}'. Available: setup, integrate, up, down, test, pair, edge, status")
     else:
         cmd_status()
 

@@ -158,3 +158,31 @@ async def reflect(req: ReflectRequest):
         "summary": "Memory consolidation pass completed."
     }
 
+@app.post("/integrations")
+async def register_integration(data: Dict[str, Any]):
+    global http_client
+    try:
+        resp = await http_client.post(f"{VAULT_URL}/integrations", json=data)
+        return resp.json()
+    except Exception as e:
+        return {"error": f"Failed to register integration: {str(e)}"}
+
+@app.get("/integrations")
+async def list_integrations():
+    global http_client
+    try:
+        resp = await http_client.get(f"{VAULT_URL}/integrations")
+        return resp.json()
+    except Exception as e:
+        return []
+
+@app.get("/integrations/{integration_id}")
+async def get_integration(integration_id: str):
+    global http_client
+    try:
+        resp = await http_client.get(f"{VAULT_URL}/integrations/{integration_id}")
+        return resp.json()
+    except Exception as e:
+        return {"error": f"Failed to get integration: {str(e)}"}
+
+

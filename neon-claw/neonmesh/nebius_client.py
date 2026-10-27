@@ -171,6 +171,56 @@ class NebiusNemotronClient:
                     "provider": "local_fallback"
                 }
 
+            # DevOps / Docker inspection synthesis
+            if "docker containers" in tool_data.lower() or "container logs" in tool_data.lower() or "container inspection" in tool_data.lower():
+                return {
+                    "success": True,
+                    "content": f"🦁 **NemoClaw DevOps Control Plane**\n\n{tool_data}",
+                    "tool_calls": [],
+                    "model": "nemotron-agentic-fallback",
+                    "provider": "local_fallback"
+                }
+
+            # GitHub audit synthesis
+            if "github audit report" in tool_data.lower() or "repository audit" in tool_data.lower():
+                return {
+                    "success": True,
+                    "content": f"🦁 **NemoClaw GitHub Code Auditor**\n\n{tool_data}",
+                    "tool_calls": [],
+                    "model": "nemotron-agentic-fallback",
+                    "provider": "local_fallback"
+                }
+
+            # ArXiv scientific research synthesis
+            if "arxiv scientific papers" in tool_data.lower() or "scientific papers found" in tool_data.lower():
+                return {
+                    "success": True,
+                    "content": f"🦁 **NemoClaw Deep Research Engine**\n\n{tool_data}",
+                    "tool_calls": [],
+                    "model": "nemotron-agentic-fallback",
+                    "provider": "local_fallback"
+                }
+
+            # Hackathon & Grant discovery synthesis
+            if "hackathon scouting radar" in tool_data.lower() or "hackathons & grants" in tool_data.lower():
+                return {
+                    "success": True,
+                    "content": f"🦁 **NemoClaw Opportunity Scout**\n\n{tool_data}",
+                    "tool_calls": [],
+                    "model": "nemotron-agentic-fallback",
+                    "provider": "local_fallback"
+                }
+
+            # Concurrent Dual-Node parallel execution synthesis
+            if "concurrent dual-node execution" in tool_data.lower() or "dual-node" in tool_data.lower():
+                return {
+                    "success": True,
+                    "content": f"🦁 **NemoClaw Distributed Mesh Orchestrator**\n\n{tool_data}",
+                    "tool_calls": [],
+                    "model": "nemotron-agentic-fallback",
+                    "provider": "local_fallback"
+                }
+
             title = "Target Website"
             if "visited [" in tool_data.lower():
                 try:
@@ -337,7 +387,133 @@ class NebiusNemotronClient:
                 "provider": "local_fallback"
             }
 
-        # 4. Check for web research / news / browsing / crypto requests
+        # 5. Check for Concurrent Dual-Node Parallel Execution (Laptop + Server)
+        parallel_keywords = ["parallel", "dual node", "at the same time", "laptop and server", "both laptop and server", "concurrent", "scattered agent", "carry 2 task", "carry two tasks"]
+        if any(w in combined_text for w in parallel_keywords):
+            return {
+                "success": True,
+                "content": "Initiating concurrent dual-node execution across Home Server and Laptop Workstation nodes...",
+                "tool_calls": [{
+                    "id": "call_parallel_01",
+                    "type": "function",
+                    "function": {
+                        "name": "parallel_dual_node_task",
+                        "arguments": json.dumps({
+                            "server_task": "Inspect Docker container health and mesh telemetry",
+                            "laptop_task": "Audit local git repository and verify edge worker status"
+                        })
+                    }
+                }],
+                "model": "nemotron-offline-fallback",
+                "provider": "local_fallback"
+            }
+
+        # 6. Check for DevOps & Docker Container Management
+        devops_keywords = ["docker", "containers", "container logs", "inspect container", "check containers", "server containers"]
+        if any(w in combined_text for w in devops_keywords):
+            if "log" in combined_text:
+                target_container = "neonmesh"
+                for word in combined_text.split():
+                    if word in ["neonmesh", "neonpulse", "neoncore", "neonmem", "neonvault", "obscura", "redis"]:
+                        target_container = word
+                        break
+                return {
+                    "success": True,
+                    "content": f"Fetching recent container logs for '{target_container}'...",
+                    "tool_calls": [{
+                        "id": "call_devops_logs_01",
+                        "type": "function",
+                        "function": {
+                            "name": "devops_inspect_logs",
+                            "arguments": json.dumps({"container_name": target_container, "tail": 50})
+                        }
+                    }],
+                    "model": "nemotron-offline-fallback",
+                    "provider": "local_fallback"
+                }
+
+            return {
+                "success": True,
+                "content": "Inspecting Docker containers and host daemon health on home server...",
+                "tool_calls": [{
+                    "id": "call_devops_status_01",
+                    "type": "function",
+                    "function": {
+                        "name": "devops_container_status",
+                        "arguments": "{}"
+                    }
+                }],
+                "model": "nemotron-offline-fallback",
+                "provider": "local_fallback"
+            }
+
+        # 7. Check for GitHub Repository Audit & Code Review
+        github_keywords = ["github", "review repo", "audit repo", "check repo", "audit code", "repository review", "review the repository"]
+        if any(w in combined_text for w in github_keywords):
+            repo_id = "Collistus-Kibe/Neon-Claw"
+            for word in combined_text.split():
+                if "/" in word and not word.startswith("http"):
+                    repo_id = word.strip("<>,.;:'\"")
+                    break
+
+            return {
+                "success": True,
+                "content": f"Auditing GitHub repository '{repo_id}' for code quality, commits, and open issues...",
+                "tool_calls": [{
+                    "id": "call_github_review_01",
+                    "type": "function",
+                    "function": {
+                        "name": "github_review_repo",
+                        "arguments": json.dumps({"repo_identifier": repo_id})
+                    }
+                }],
+                "model": "nemotron-offline-fallback",
+                "provider": "local_fallback"
+            }
+
+        # 8. Check for Scientific Research Papers (ArXiv)
+        arxiv_keywords = ["arxiv", "scientific paper", "research paper", "papers on", "summarize papers"]
+        if any(w in combined_text for w in arxiv_keywords):
+            query = "distributed AI multi-agent sovereign systems"
+            for prefix in ["papers on", "research on", "scientific papers on", "search papers on"]:
+                if prefix in combined_text:
+                    query = combined_text.split(prefix)[-1].strip()
+                    break
+
+            return {
+                "success": True,
+                "content": f"Searching scientific research papers on ArXiv for '{query}'...",
+                "tool_calls": [{
+                    "id": "call_search_papers_01",
+                    "type": "function",
+                    "function": {
+                        "name": "search_scientific_papers",
+                        "arguments": json.dumps({"query": query, "max_results": 3})
+                    }
+                }],
+                "model": "nemotron-offline-fallback",
+                "provider": "local_fallback"
+            }
+
+        # 9. Check for Hackathons & Grants Discovery
+        hackathon_keywords = ["hackathon", "hackathons", "grant", "grants", "startup program", "scholarships", "competitions"]
+        if any(w in combined_text for w in hackathon_keywords):
+            return {
+                "success": True,
+                "content": "Scanning ecosystem for upcoming AI and Edge Computing hackathons and funding grants...",
+                "tool_calls": [{
+                    "id": "call_hackathons_01",
+                    "type": "function",
+                    "function": {
+                        "name": "discover_hackathons",
+                        "arguments": json.dumps({"category": "AI, Agents, and Edge Computing"})
+                    }
+                }],
+                "model": "nemotron-offline-fallback",
+                "provider": "local_fallback"
+            }
+
+        # 10. Check for web research / news / browsing / crypto requests
         browse_keywords = [
             "browse", "http", "www", "screenshot", "visit", "website",
             "news", "crypto", "bitcoin", "ethereum", "price", "market",

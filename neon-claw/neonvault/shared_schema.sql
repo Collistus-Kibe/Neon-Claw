@@ -50,3 +50,13 @@ CREATE TABLE IF NOT EXISTS conversation_history (
 
 CREATE INDEX IF NOT EXISTS idx_conversation_history_user ON conversation_history(user_id);
 
+-- Dynamic System Integrations & Tool Configs (Synchronized across nodes)
+CREATE TABLE IF NOT EXISTS system_integrations (
+    id TEXT PRIMARY KEY,
+    service_name TEXT NOT NULL,
+    config_json TEXT NOT NULL DEFAULT '{}',
+    is_enabled BOOLEAN DEFAULT 1,
+    configured_by_node TEXT NOT NULL DEFAULT 'laptop',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
