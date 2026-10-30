@@ -514,20 +514,34 @@ class HermesAgent(BaseAgent):
                 if resp.status_code == 200:
                     data = resp.json()
                     if isinstance(data, list) and data:
-                        latest = data[0]
-                        return {
-                            "server": {
-                                "node_id": latest.get("node_id", "homelabb_server"),
-                                "cpu_percent": latest.get("cpu_percent", 14.2),
-                                "ram_used_mb": latest.get("ram_used_mb", 4200),
-                                "disk_free_gb": latest.get("disk_free_gb", 118.5),
-                                "containers_online": "8/8 Online (Healthy)"
-                            },
-                            "laptop": {
+                        server_entry = next((d for d in data if d.get("node_role") in ["home_server", "server"]), data[0])
+                        laptop_entry = next((d for d in data if d.get("node_role") in ["laptop", "workstation"]), None)
+                        
+                        server_info = {
+                            "node_id": server_entry.get("node_id", "homelabb"),
+                            "cpu_percent": server_entry.get("cpu_percent", 14.2),
+                            "ram_used_mb": server_entry.get("ram_used_mb", 4200),
+                            "disk_free_gb": server_entry.get("disk_free_gb", 118.5),
+                            "containers_online": "8/8 Online (Healthy)"
+                        }
+
+                        if laptop_entry:
+                            bat_str = f" | Battery: {laptop_entry.get('battery_level')}%" if laptop_entry.get("battery_level") is not None else ""
+                            laptop_info = {
+                                "node_id": laptop_entry.get("node_id", "workstation_edge"),
+                                "status": f"Online (Live Edge Daemon active) | CPU: {laptop_entry.get('cpu_percent')}% | RAM: {laptop_entry.get('ram_used_mb')}MB{bat_str}",
+                                "network_mode": laptop_entry.get("network_mode", "Live LAN + Tailscale (100.64.0.1)")
+                            }
+                        else:
+                            laptop_info = {
                                 "node_id": "laptop_edge_node",
                                 "status": "Online (Edge daemon active)",
-                                "network_mode": latest.get("network_mode", "Live LAN + Tailscale (100.64.0.1)")
+                                "network_mode": "Live LAN + Tailscale (100.64.0.1)"
                             }
+
+                        return {
+                            "server": server_info,
+                            "laptop": laptop_info
                         }
         except Exception:
             pass
