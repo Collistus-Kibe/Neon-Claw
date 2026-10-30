@@ -65,6 +65,18 @@ class LocalSecretIn(BaseModel):
     encrypted_value: str
     description: Optional[str] = ""
 
+class MeshTaskIn(BaseModel):
+    id: Optional[str] = None
+    task_type: str
+    target_node: str = "laptop"
+    origin_node: str = "home_server"
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+class MeshTaskCompleteIn(BaseModel):
+    result_text: str
+    execution_logs: Optional[str] = ""
+    status: str = "completed"
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -269,6 +281,98 @@ async def get_integration(integration_id: str):
         except Exception:
             pass
         return d
+
+# ==============================================================================
+# 1.4. DISTRIBUTED MESH TASKS QUEUE (Server <-> Laptop Execution)
+# ==============================================================================
+
+@app.post("/mesh/tasks")
+async def create_mesh_task(task: MeshTaskIn):
+    import uuid
+    task_id = task.id or f"task_{task.target_node}_{uuid.uuid4().hex[:8]}"
+    async with aiosqlite.connect(SHARED_DB) as db:
+        await db.execute(
+            """INSERT INTO mesh_tasks 
+               (id, task_type, target_node, origin_node, payload_json, status)
+               VALUES (?, ?, ?, ?, ?, 'pending')""",
+            (task_id, task.task_type, task.target_node, task.origin_node, json.dumps(task.payload))
+        )
+        await db.commit()
+    return {"task_id": task_id, "status": "pending", "target_node": task.target_node}
+
+@app.get("/mesh/tasks/poll")
+async def poll_mesh_task(target_node: str = "laptop"):
+    async with aiosqlite.connect(SHARED_DB) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT * FROM mesh_tasks 
+               WHERE target_node = ? AND status = 'pending' 
+               ORDER BY created_at ASC LIMIT 1""",
+            (target_node,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return {"task": None}
+        task_data = dict(row)
+        # Mark as claimed
+        await db.execute(
+            "UPDATE mesh_tasks SET status = 'claimed' WHERE id = ?",
+            (task_data["id"],)
+        )
+        await db.commit()
+        try:
+            task_data["payload"] = json.loads(task_data.get("payload_json", "{}"))
+        except Exception:
+            task_data["payload"] = {}
+        return {"task": task_data}
+
+@app.post("/mesh/tasks/{task_id}/complete")
+async def complete_mesh_task(task_id: str, data: MeshTaskCompleteIn):
+    async with aiosqlite.connect(SHARED_DB) as db:
+        cursor = await db.execute(
+            """UPDATE mesh_tasks 
+               SET status = ?, result_text = ?, execution_logs = ?, completed_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (data.status, data.result_text, data.execution_logs, task_id)
+        )
+        await db.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Task not found")
+    return {"task_id": task_id, "status": data.status}
+
+@app.get("/mesh/tasks/{task_id}")
+async def get_mesh_task(task_id: str):
+    async with aiosqlite.connect(SHARED_DB) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM mesh_tasks WHERE id = ?", (task_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Task not found")
+        task_data = dict(row)
+        try:
+            task_data["payload"] = json.loads(task_data.get("payload_json", "{}"))
+        except Exception:
+            task_data["payload"] = {}
+        return task_data
+
+@app.get("/mesh/tasks/logs")
+async def get_mesh_task_logs(node_role: Optional[str] = None, limit: int = 10):
+    async with aiosqlite.connect(SHARED_DB) as db:
+        db.row_factory = aiosqlite.Row
+        if node_role:
+            cursor = await db.execute(
+                """SELECT id, task_type, target_node, origin_node, status, execution_logs, created_at, completed_at 
+                   FROM mesh_tasks WHERE target_node = ? ORDER BY created_at DESC LIMIT ?""",
+                (node_role, limit)
+            )
+        else:
+            cursor = await db.execute(
+                """SELECT id, task_type, target_node, origin_node, status, execution_logs, created_at, completed_at 
+                   FROM mesh_tasks ORDER BY created_at DESC LIMIT ?""",
+                (limit,)
+            )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
 
 # ==============================================================================
 # 2. PERSONAL VAULT ENDPOINTS (Private to Node - Never Synced)

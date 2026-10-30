@@ -60,3 +60,19 @@ CREATE TABLE IF NOT EXISTS system_integrations (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Distributed Mesh Tasks Queue (Enables bidirectional server <-> laptop task execution)
+CREATE TABLE IF NOT EXISTS mesh_tasks (
+    id TEXT PRIMARY KEY,
+    task_type TEXT NOT NULL,
+    target_node TEXT NOT NULL, -- 'laptop' or 'home_server'
+    origin_node TEXT NOT NULL DEFAULT 'home_server',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'claimed', 'completed', 'failed'
+    result_text TEXT,
+    execution_logs TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_mesh_tasks_target ON mesh_tasks(target_node, status);
+

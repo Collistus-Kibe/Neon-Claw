@@ -185,4 +185,56 @@ async def get_integration(integration_id: str):
     except Exception as e:
         return {"error": f"Failed to get integration: {str(e)}"}
 
+# ==============================================================================
+# DISTRIBUTED MESH TASK ROUTING (Server <-> Laptop)
+# ==============================================================================
+
+@app.post("/mesh/tasks")
+async def create_mesh_task(data: Dict[str, Any]):
+    global http_client
+    try:
+        resp = await http_client.post(f"{VAULT_URL}/mesh/tasks", json=data)
+        return resp.json()
+    except Exception as e:
+        return {"error": f"Failed to dispatch mesh task: {str(e)}"}
+
+@app.get("/mesh/tasks/poll")
+async def poll_mesh_task(target_node: str = "laptop"):
+    global http_client
+    try:
+        resp = await http_client.get(f"{VAULT_URL}/mesh/tasks/poll", params={"target_node": target_node})
+        return resp.json()
+    except Exception as e:
+        return {"task": None}
+
+@app.post("/mesh/tasks/{task_id}/complete")
+async def complete_mesh_task(task_id: str, data: Dict[str, Any]):
+    global http_client
+    try:
+        resp = await http_client.post(f"{VAULT_URL}/mesh/tasks/{task_id}/complete", json=data)
+        return resp.json()
+    except Exception as e:
+        return {"error": f"Failed to complete mesh task: {str(e)}"}
+
+@app.get("/mesh/tasks/{task_id}")
+async def get_mesh_task(task_id: str):
+    global http_client
+    try:
+        resp = await http_client.get(f"{VAULT_URL}/mesh/tasks/{task_id}")
+        return resp.json()
+    except Exception as e:
+        return {"error": f"Failed to get mesh task: {str(e)}"}
+
+@app.get("/mesh/tasks/logs")
+async def get_mesh_task_logs(node_role: Optional[str] = None, limit: int = 10):
+    global http_client
+    try:
+        params = {"limit": limit}
+        if node_role:
+            params["node_role"] = node_role
+        resp = await http_client.get(f"{VAULT_URL}/mesh/tasks/logs", params=params)
+        return resp.json()
+    except Exception as e:
+        return []
+
 

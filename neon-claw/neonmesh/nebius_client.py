@@ -272,6 +272,29 @@ class NebiusNemotronClient:
                     "provider": "local_fallback"
                 }
 
+            # Deep DNA & Health Research synthesis (Server Node)
+            if "deep scientific research: dna variants" in tool_data.lower() or "genomic variants & clinical" in tool_data.lower():
+                return {
+                    "success": True,
+                    "content": (
+                        f"{tool_data}\n\n"
+                        f"💡 **Next Autonomous Step**: Say *\"Move task to laptop, draft an email via laptop\"* to have your laptop workstation edge node generate and save an executive email briefing locally."
+                    ),
+                    "tool_calls": [],
+                    "model": "nemotron-agentic-fallback",
+                    "provider": "local_fallback"
+                }
+
+            # Laptop Workstation Offload & Edge Execution synthesis
+            if "executed on laptop workstation edge node" in tool_data.lower() or "drafted email via local edge node" in tool_data.lower():
+                return {
+                    "success": True,
+                    "content": tool_data,
+                    "tool_calls": [],
+                    "model": "nemotron-agentic-fallback",
+                    "provider": "local_fallback"
+                }
+
             # Check if original request was travel/destination/booking related
             lower_msg = raw_user_msg.lower()
             if any(w in lower_msg for w in ["kenya", "kenaya", "destination", "travel", "safari", "hotel", "resort", "booking", "book one", "book me"]):
@@ -433,6 +456,46 @@ class NebiusNemotronClient:
                     "function": {
                         "name": "generate_executive_briefing",
                         "arguments": json.dumps({"include_news": True})
+                    }
+                }],
+                "model": "nemotron-offline-fallback",
+                "provider": "local_fallback"
+            }
+
+        # Check for Laptop Edge Task execution ("move task to laptop", "draft via laptop", "run on laptop")
+        laptop_keywords = ["move task to laptop", "move to laptop", "via laptop", "on laptop", "draft via laptop", "draft an email via laptop", "laptop draft", "to laptop", "offload to laptop", "draft on laptop"]
+        if any(w in last_user_msg for w in laptop_keywords):
+            return {
+                "success": True,
+                "content": "Dispatching email drafting workflow directly to your Laptop Workstation Edge node...",
+                "tool_calls": [{
+                    "id": "call_laptop_task_01",
+                    "type": "function",
+                    "function": {
+                        "name": "offload_to_laptop",
+                        "arguments": json.dumps({
+                            "action": "draft_email",
+                            "topic": "Executive Health Briefing: Genomic Risk Mitigation & Preventative Action",
+                            "recipient": "collistus@company.internal"
+                        })
+                    }
+                }],
+                "model": "nemotron-offline-fallback",
+                "provider": "local_fallback"
+            }
+
+        # Check for DNA / Genomics / Preventative Health deep research on server
+        dna_keywords = ["dna", "genom", "longevity", "epigenet", "deep research on server", "deep research", "dig deep"]
+        if any(w in last_user_msg for w in dna_keywords):
+            return {
+                "success": True,
+                "content": "Initiating multi-stage genomics and preventative health deep research on the Home Server node...",
+                "tool_calls": [{
+                    "id": "call_dna_research_01",
+                    "type": "function",
+                    "function": {
+                        "name": "deep_dna_health_research",
+                        "arguments": json.dumps({"query": raw_user_msg.strip()})
                     }
                 }],
                 "model": "nemotron-offline-fallback",
@@ -676,19 +739,14 @@ class NebiusNemotronClient:
                 "provider": "local_fallback"
             }
 
-        # 12. Executive Chief-of-Staff Conversational Reply
+        # 12. Intelligent Conversational Response (Eliminates robotic command menus)
+        clean_user = raw_user_msg.strip()
         return {
             "success": True,
             "content": (
-                f"🦁 **NemoClaw Personal Assistant**\n\n"
-                f"I understand: *\"{raw_user_msg.strip()}\"*\n\n"
-                "I am ready to take autonomous action. Here are key workflows I can execute for you right now:\n"
-                "• 📬 **Email Triage**: Scan your inbox for urgent outages, client requests, and deadlines\n"
-                "• ✈️ **Travel & Bookings**: Curate premier Kenya destinations, ratings, and coordinate full safari bookings\n"
-                "• 🌐 **Web Intelligence**: Research websites, track live market prices, and capture pages via Obscura\n"
-                "• 🐳 **DevOps Control Plane**: Inspect Docker container health and stream server logs\n"
-                "• ⚡ **Dual-Node Mesh**: Execute concurrent tasks across your home server and laptop simultaneously\n\n"
-                "What would you like me to tackle or coordinate next?"
+                f"Understood. Regarding: *\"{clean_user}\"*\n\n"
+                f"I'm ready to coordinate this across our distributed mesh. Whether you'd like me to run deep research on the server, offload execution to your laptop workstation, triage your inbox, or draft correspondence, just let me know how you'd like to proceed.\n\n"
+                f"How would you prefer to coordinate this?"
             ),
             "tool_calls": [],
             "model": "nemotron-offline-fallback",

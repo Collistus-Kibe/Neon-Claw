@@ -1,0 +1,4 @@
+# Ignore local runtime drafted emails
+*.eml
+*.txt
+!.gitignore
