@@ -1,1 +1,0 @@
-feat: real-time laptop edge telemetry in executive briefing

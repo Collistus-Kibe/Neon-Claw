@@ -53,43 +53,71 @@ class EmailTriageEngine:
     def is_configured(self) -> bool:
         return bool(self.user and self.password and self.password != "your_app_password_here")
 
+    @staticmethod
+    def _clean_body_text(raw_content: str) -> str:
+        """
+        Strips HTML tags, styles, scripts, and CSS artifacts to extract human-readable text.
+        """
+        if not raw_content:
+            return ""
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(raw_content, "html.parser")
+            for tag in soup(["script", "style", "head", "title", "meta", "noscript"]):
+                tag.decompose()
+            clean = soup.get_text(separator=" ")
+        except Exception:
+            clean = re.sub(r'<(style|script|head)[^>]*>.*?</\1>', '', raw_content, flags=re.DOTALL | re.IGNORECASE)
+            clean = re.sub(r'<[^>]+>', ' ', clean)
+        # Strip CSS style blocks or !important remnants
+        clean = re.sub(r'\{[^}]*\}', ' ', clean)
+        clean = re.sub(r'![a-zA-Z]+', ' ', clean)
+        clean = re.sub(r'@media[^{]+', ' ', clean)
+        clean = " ".join(clean.split()).strip()
+        return clean
+
     def classify_urgency(self, subject: str, sender: str, snippet: str) -> Dict[str, Any]:
         """
         Classifies an email into URGENT, HIGH, NORMAL, or LOW priority.
         """
         text = f"{subject} {snippet}".lower()
+        sender_lower = sender.lower()
         score = 0
         urgency_level = "NORMAL"
         badge = "ℹ️"
         reason = "Standard communication"
 
-        # Check URGENT triggers
+        # Check URGENT triggers (outages, security alerts, fraud)
         for kw in URGENT_KEYWORDS:
-            if kw in text:
+            if re.search(r'\b' + re.escape(kw) + r'\b', text):
                 score += 10
                 urgency_level = "URGENT"
                 badge = "🚨"
                 reason = f"Contains critical trigger: '{kw}'"
                 break
 
-        # Check HIGH triggers if not already urgent
+        # Check LOW / Promotional / Marketing markers (Jumia, deals, sales, newsletters)
+        promotional_markers = [
+            "newsletter", "unsubscribe", "promotions", "discount", "sale", "digest",
+            "weekly update", "no-reply", "noreply", "notification", "marketing", "webinar",
+            "deals", "madeals", "jumia", "black friday", "coupon", "offer", "shop", "promo"
+        ]
+        is_promo = any(kw in text or kw in sender_lower for kw in promotional_markers)
+
+        if urgency_level == "NORMAL" and is_promo:
+            urgency_level = "LOW"
+            badge = "💤"
+            reason = "Promotional offer, deal, or newsletter"
+
+        # Check HIGH triggers (deadlines, client proposals, contracts) only if not promotional
         if urgency_level == "NORMAL":
+            cleaned_text = re.sub(r'![a-zA-Z]+', ' ', text)
             for kw in HIGH_KEYWORDS:
-                if kw in text:
+                if re.search(r'\b' + re.escape(kw) + r'\b', cleaned_text):
                     score += 5
                     urgency_level = "HIGH"
                     badge = "⚠️"
                     reason = f"Important work indicator: '{kw}'"
-                    break
-
-        # Check LOW / PROMOTIONAL triggers
-        if urgency_level == "NORMAL":
-            for kw in LOW_KEYWORDS:
-                if kw in text:
-                    score -= 5
-                    urgency_level = "LOW"
-                    badge = "💤"
-                    reason = f"Automated or promotional content: '{kw}'"
                     break
 
         return {
@@ -144,25 +172,33 @@ class EmailTriageEngine:
                 # Date
                 date_str = msg.get("Date", "")
 
-                # Extract plain text body snippet
-                body = ""
+                # Extract plain text body snippet cleanly
+                plain_body = ""
+                html_body = ""
                 if msg.is_multipart():
                     for part in msg.walk():
-                        if part.get_content_type() == "text/plain":
-                            body = part.get_payload(decode=True).decode(errors="ignore")
-                            break
+                        ctype = part.get_content_type()
+                        if ctype == "text/plain" and not plain_body:
+                            plain_body = part.get_payload(decode=True).decode(errors="ignore")
+                        elif ctype == "text/html" and not html_body:
+                            html_body = part.get_payload(decode=True).decode(errors="ignore")
                 else:
-                    body = msg.get_payload(decode=True).decode(errors="ignore")
+                    payload = msg.get_payload(decode=True).decode(errors="ignore")
+                    if "<html" in payload.lower() or "<body" in payload.lower():
+                        html_body = payload
+                    else:
+                        plain_body = payload
 
-                snippet = " ".join(body.split())[:300]
-                triage = self.classify_urgency(subject, sender, snippet)
+                extracted_text = plain_body if plain_body.strip() else html_body
+                clean_snippet = self._clean_body_text(extracted_text)[:250]
+                triage = self.classify_urgency(subject, sender, clean_snippet)
 
                 emails_list.append({
                     "id": msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id),
                     "sender": sender,
                     "subject": subject,
                     "date": date_str,
-                    "snippet": snippet,
+                    "snippet": clean_snippet,
                     "urgency": triage["urgency"],
                     "badge": triage["badge"],
                     "reason": triage["reason"]

@@ -168,6 +168,13 @@ class NebiusNemotronClient:
             else:
                 tool_data = raw_user_msg.split("--- tool execution data ---")[-1].strip()
 
+            # Clean any trailing prompt instruction so internal reasoning never leaks to user
+            if "Based on the live data gathered above" in tool_data:
+                tool_data = tool_data.split("Based on the live data gathered above")[0].strip()
+            elif "based on the live data gathered above" in tool_data.lower():
+                idx = tool_data.lower().find("based on the live data gathered above")
+                tool_data = tool_data[:idx].strip()
+
             # Executive Morning Briefing synthesis
             if "executive morning briefing" in tool_data.lower() or "mesh nodes & hardware health" in tool_data.lower():
                 return {
@@ -180,10 +187,17 @@ class NebiusNemotronClient:
 
             # Email Triage Report or email list synthesis
             if "inbox triage report" in tool_data.lower() or "urgent items" in tool_data.lower() or ("found" in tool_data.lower() and "emails:" in tool_data.lower()):
+                draft_hint = ""
+                if "draft" in raw_user_msg.lower():
+                    draft_hint = (
+                        "\n\n✍️ **Ready to Draft**:\n"
+                        "To draft your email, tell me the recipient and topic, e.g.:\n"
+                        "`Draft an email to alex@example.com about project updates` or reply to any sender above."
+                    )
                 content = (
                     f"🦁 **NemoClaw Executive Email Triage**\n\n"
                     f"{tool_data}\n\n"
-                    f"💡 *Autonomous Options*: Would you like me to draft immediate replies to any urgent items, or take remediation actions?"
+                    f"💡 *Autonomous Options*: Would you like me to draft immediate replies to any items, or prepare an outgoing message?{draft_hint}"
                 )
                 return {
                     "success": True,
